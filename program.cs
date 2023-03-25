@@ -1,15 +1,7 @@
-using System;
-using System.IO;
-using System.Threading.Tasks;
 using OpenAI_API;
 using Discord;
 using Discord.WebSocket;
 using OpenAI_API.Completions;
-using Discord.Interactions;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.DependencyInjection;
-using DNet_V3_Tutorial;
-using System.Text.RegularExpressions;
 
 public class Program
 {
