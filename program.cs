@@ -15,24 +15,30 @@ public class Program
 
     public static void Main(string[] args) => new Program().MainAsync().GetAwaiter().GetResult();
 
-    public async Task MainAsync()
-    {
-        // Set up memory file path
-        _memoryFilePath = "user_memory.txt";
+  public async Task MainAsync()
+{
+    // Set up memory file path
+    _memoryFilePath = "user_memory.txt";
 
-        // Set up Discord bot client
-        _client = new DiscordSocketClient();
-        _client.Log += Log;
+    // Set up Discord bot client
+    _client = new DiscordSocketClient();
+    _client.Log += Log;
 
-        await _client.LoginAsync(TokenType.Bot, "");
-        await _client.StartAsync();
+    await _client.LoginAsync(TokenType.Bot, "MTAyNzY2NTYzOTQ1Nzk1MTgxNA.GOT0EZ.BxjjyYebumpXkqfyBiGaiae2EhW1OaVUgVBBMI");
+    await _client.StartAsync();
 
-        _client.MessageReceived += MessageReceived;
-     
-     Console.WriteLine("Twenty years from now you will be more disappointed by the things that you didn't do than by the ones you did do, So throw off the bowlines, Sail away from the safe harbor, Catch the trade winds in your sails. Explore, dream discover, — Unknown");
-        
-        await Task.Delay(-1);
-    }
+    _client.MessageReceived += MessageReceived;
+
+    Console.ForegroundColor = ConsoleColor.Green;
+    // Print a quote to the console
+    Console.WriteLine("Twenty years from now you will be more disappointed by the things that you didn't do than by the ones you did do, So throw off the bowlines, Sail away from the safe harbor, Catch the trade winds in your sails. Explore, dream discover, — Unknown");
+
+    // Wait for the user to press a key before exiting
+    Console.WriteLine("Press any key to exit...");
+    Console.ReadKey();
+
+    await _client.StopAsync();
+}
 
     private async Task MessageReceived(SocketMessage message)
     {
