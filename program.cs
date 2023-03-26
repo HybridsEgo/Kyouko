@@ -1,7 +1,12 @@
+using System;
+using System.IO;
+using System.Threading.Tasks;
 using OpenAI_API;
 using Discord;
 using Discord.WebSocket;
 using OpenAI_API.Completions;
+using Discord.Interactions;
+
 
 public class Program
 {
@@ -29,6 +34,15 @@ public class Program
 
     private async Task MessageReceived(SocketMessage message)
     {
+        string Filename = "trainingdata.json";
+        if (!File.Exists(Filename))
+        {
+            Console.WriteLine("File not found.");
+            File.Create(Filename);
+        }
+
+        string trainingData = Filename;
+
         string input = message.ToString();
 
         // Remove symbols
@@ -36,7 +50,8 @@ public class Program
 
         Dictionary<string, string> blacklist = new Dictionary<string, string>()
         {
-            { "", "" }
+            {"", "filtered"},
+
         };
 
         foreach (string key in blacklist.Keys)
@@ -44,7 +59,7 @@ public class Program
             if (filteredInput.ToLower().Contains(key.ToLower()))
             {
                 Console.WriteLine(blacklist[key]);
-                await message.Channel.SendMessageAsync("Filtered");
+                await message.Channel.SendMessageAsync("filtered");
                 return;
             }
         }
@@ -65,6 +80,7 @@ public class Program
 
         var openai = new OpenAIAPI("");
 
+        //if (message.Author.Id != 332582777897746444) return;
         if (message.Author.IsBot) return;
 
         // Check if user has interacted with the bot before
@@ -77,18 +93,25 @@ public class Program
         // Store user memory in file
         await SaveUserMemory(user.Id, prompt);
 
-        CompletionRequest completionRequest = new CompletionRequest();
-        completionRequest.Prompt = "Prompt: "+ input + " Context that might be relevant but don't rely on it all the time: " + memory;
-        completionRequest.Model = OpenAI_API.Models.Model.DavinciText;
+        await message.Channel.TriggerTypingAsync();
 
-        var completions = openai.Completions.CreateCompletionAsync(memory + " " + completionRequest.Prompt, completionRequest.Model, max_tokens: 100);
+        CompletionRequest completionRequest = new CompletionRequest();
+        completionRequest.Prompt = "Prompt: " + prompt + " Context that might be relevant but don't rely on it all the time: " + memory;
+        completionRequest.Model = OpenAI_API.Models.Model.DavinciText;
+        completionRequest.Temperature = 0.5;
+
+        var completions = openai.Completions.CreateCompletionAsync(memory + " " + completionRequest.Prompt, completionRequest.Model, max_tokens: 1000);
         var response = completions.Result.Completions[0].Text.TrimEnd();
+        Console.WriteLine(response);
 
         foreach (string key in blacklist.Keys)
         {
+            Console.WriteLine(response);
+
             if (response.Contains(key.ToLower()))
             {
                 Console.WriteLine(blacklist[key]);
+                
                 await message.Channel.SendMessageAsync("Filtered");
                 return;
             }
@@ -107,7 +130,7 @@ public class Program
         var lines = await File.ReadAllLinesAsync(_memoryFilePath);
         foreach (var line in lines)
         {
-            var parts = line.Split(":");
+            var parts = line.Split(" : ");
             if (parts.Length == 2 && ulong.TryParse(parts[0], out ulong id) && id == userId)
             {
                 return parts[1];
@@ -128,10 +151,10 @@ public class Program
         var existingLine = lines.FirstOrDefault(x => x.StartsWith($"{userId}:"));
         if (existingLine != null)
         {
-            //lines.Remove(existingLine);
+            lines.Remove(existingLine);
         }
 
-        lines.Add($"{userId}:{memory}");
+        lines.Add($"{userId} : {memory}");
 
         await File.WriteAllLinesAsync(_memoryFilePath, lines);
     }
