@@ -104,7 +104,7 @@ public class Program
 
         CompletionRequest completionRequest = new CompletionRequest();
         completionRequest.Prompt = "Prompt: " + prompt + " Context that might be relevant but don't rely on it all the time: " + memory;
-        completionRequest.Model = OpenAI_API.Models.Model.DavinciText;
+        completionRequest.Model = new OpenAI_API.Models.Model("text-davinci-003");
         completionRequest.Temperature = 0.5;
 
         var completions = openai.Completions.CreateCompletionAsync(memory + " " + completionRequest.Prompt, completionRequest.Model, max_tokens: 1000);
