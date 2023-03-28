@@ -147,25 +147,45 @@ public class Program
         return "";
     }
 
-    private async Task SaveUserMemory(ulong userId, string memory)
+   private async Task<string> GetUserMemory(ulong userId, string newMemory = "")
+{
+    if (!File.Exists(_memoryFilePath))
     {
-        var lines = new List<string>();
-        if (File.Exists(_memoryFilePath))
-        {
-            lines = (await File.ReadAllLinesAsync(_memoryFilePath)).ToList();
-        }
-
-        var existingLine = lines.FirstOrDefault(x => x.StartsWith($"{userId}:"));
-        if (existingLine != null)
-        {
-            lines.Remove(existingLine);
-        }
-
-        lines.Add($"{userId} : {memory}");
-
-        await File.WriteAllLinesAsync(_memoryFilePath, lines);
+        File.Create(_memoryFilePath);
+        return "";
     }
 
+    var lines = await File.ReadAllLinesAsync(_memoryFilePath);
+    var memories = new List<string>();
+    bool userMemoryFound = false;
+    foreach (var line in lines)
+    {
+        var parts = line.Split(" : ");
+        if (parts.Length == 2 && ulong.TryParse(parts[0], out ulong id) && id == userId)
+        {
+            if (newMemory != "")
+            {
+                parts[1] = newMemory;
+                userMemoryFound = true;
+            }
+            memories.Add(parts[1]);
+            userMemoryFound = true;
+        }
+        else
+        {
+            memories.Add(parts[1]);
+        }
+    }
+
+    if (!userMemoryFound && newMemory != "")
+    {
+        memories.Add(newMemory);
+    }
+
+    await File.WriteAllLinesAsync(_memoryFilePath, lines);
+
+    return string.Join(" ", memories);
+}
     private Task Log(LogMessage msg)
     {
         Console.WriteLine(msg.ToString());
