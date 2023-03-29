@@ -6,7 +6,7 @@ using Discord;
 using Discord.WebSocket;
 using OpenAI_API.Completions;
 using Discord.Interactions;
-
+using Newtonsoft.Json.Linq;
 
 public class Program
 {
@@ -17,30 +17,16 @@ public class Program
 
     public async Task MainAsync()
     {
-        // Set up memory file path
-        _memoryFilePath = "user_memory.txt";
+        string apiKeys = "keys.json";
+        if (!File.Exists(apiKeys))
+        {
+            Console.WriteLine("File not found.");
+            File.Create(apiKeys);
+        }
 
-        // Set up Discord bot client
-        _client = new DiscordSocketClient();
-        _client.Log += Log;
+        JObject json = JObject.Parse(File.ReadAllText(apiKeys));
+        JToken discordToken = json["discordToken"];
 
-        await _client.LoginAsync(TokenType.Bot, "");
-        await _client.StartAsync();
-
-        _client.MessageReceived += MessageReceived;
-
-        Console.ForegroundColor = ConsoleColor.Green;
-        // Print a quote to the console
-        Console.WriteLine("Twenty years from now you will be more disappointed by the things that you didn't do than by the ones you did do, So throw off the bowlines, Sail away from the safe harbor, Catch the trade winds in your sails. Explore, dream discover, — Unknown");
-
-        // Wait for the user to press a key before exiting
-        Console.WriteLine("Press any key to exit...");
-        Console.ReadKey();
-
-        await _client.StopAsync();
-    }
-    private async Task MessageReceived(SocketMessage message)
-    {
         string Filename = "trainingdata.json";
         if (!File.Exists(Filename))
         {
@@ -48,28 +34,35 @@ public class Program
             File.Create(Filename);
         }
 
-        string trainingData = Filename;
+        // Set up memory file path
+        _memoryFilePath = "user_memory.txt";
 
+        // Set up Discord bot client
+        _client = new DiscordSocketClient();
+        _client.Log += Log;
+
+        await _client.LoginAsync(TokenType.Bot, discordToken.ToString());
+        await _client.StartAsync();
+
+        _client.MessageReceived += MessageReceived;
+
+        Console.ReadKey();
+
+        await _client.StopAsync();
+    }
+
+    private async Task MessageReceived(SocketMessage message)
+    {
         string input = message.ToString();
+        Console.WriteLine("(" + message.Author.Username + "#" + message.Author.DiscriminatorValue + ") " + message.Content.ToString());
 
         // Remove symbols
         string filteredInput = new string(input.Where(c => Char.IsLetterOrDigit(c) || Char.IsWhiteSpace(c)).ToArray());
 
         Dictionary<string, string> blacklist = new Dictionary<string, string>()
         {
-            {"insert slur here", "filtered"},
-
+            {"insert slur here", "filtered"}
         };
-
-        foreach (string key in blacklist.Keys)
-        {
-            if (filteredInput.ToLower().Contains(key.ToLower()))
-            {
-                Console.WriteLine(blacklist[key]);
-                await message.Channel.SendMessageAsync("filtered");
-                return;
-            }
-        }
 
         if (input.Contains("::clear"))
         {
@@ -85,13 +78,18 @@ public class Program
             return;
         }
 
-        var openai = new OpenAIAPI("");
+        string apiKeys = "keys.json";
+        JObject json = JObject.Parse(File.ReadAllText(apiKeys));
+        JToken openAIToken = json.SelectToken("openAIToken");
 
-        //if (message.Author.Id != 332582777897746444) return;
+        var openai = new OpenAIAPI(openAIToken.ToString());
+
+        //if (message.Author.Id != 332582777897746444 && message.Author.Id != 971242993774391396) return;
         if (message.Author.IsBot) return;
 
         // Check if user has interacted with the bot before
         var user = message.Author;
+
         var memory = await GetUserMemory(user.Id);
 
         // Use OpenAI API to generate a response based on user memory and message content
@@ -103,18 +101,19 @@ public class Program
         await message.Channel.TriggerTypingAsync();
 
         CompletionRequest completionRequest = new CompletionRequest();
-        completionRequest.Prompt = "Prompt: " + prompt + " Context that might be relevant but don't rely on it all the time: " + memory;
+        completionRequest.Prompt = prompt + " " + new List <string> { memory };
         completionRequest.Model = new OpenAI_API.Models.Model("text-davinci-003");
-        completionRequest.Temperature = 0.5;
+        completionRequest.Temperature = 1;
 
-        var completions = openai.Completions.CreateCompletionAsync(memory + " " + completionRequest.Prompt, completionRequest.Model, max_tokens: 1000);
-        var response = completions.Result.Completions[0].Text.TrimEnd();
-        Console.WriteLine(response);
+        var completions = openai.Completions.CreateCompletionAsync(completionRequest.Prompt, completionRequest.Model, max_tokens: 1000, completionRequest.Temperature);
+        var response = completions.Result.Completions[0].Text.Trim();
+
+        Console.WriteLine("(Responing to : " + message.Author.Username + "#" + message.Author.DiscriminatorValue + ") " + response.Trim());
+
+        Console.WriteLine(memory);
 
         foreach (string key in blacklist.Keys)
         {
-            Console.WriteLine(response);
-
             if (response.Contains(key.ToLower()))
             {
                 Console.WriteLine(blacklist[key]);
@@ -158,7 +157,7 @@ public class Program
         var existingLine = lines.FirstOrDefault(x => x.StartsWith($"{userId}:"));
         if (existingLine != null)
         {
-            lines.Remove(existingLine);
+            //lines.Remove(existingLine);
         }
 
         lines.Add($"{userId} : {memory}");
@@ -172,4 +171,3 @@ public class Program
         return Task.CompletedTask;
     }
 }
-
