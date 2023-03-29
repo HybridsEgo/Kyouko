@@ -101,7 +101,7 @@ public class Program
         await message.Channel.TriggerTypingAsync();
 
         CompletionRequest completionRequest = new CompletionRequest();
-        completionRequest.Prompt = prompt + " " + new List <string> { memory };
+        completionRequest.Prompt = prompt;
         completionRequest.Model = new OpenAI_API.Models.Model("text-davinci-003");
         completionRequest.Temperature = 1;
 
