@@ -105,8 +105,9 @@ public class Program
         completionRequest.Model = new OpenAI_API.Models.Model("text-davinci-003");
         completionRequest.Temperature = 1;
 
-        var completions = openai.Completions.CreateCompletionAsync(completionRequest.Prompt, completionRequest.Model, max_tokens: 1000, completionRequest.Temperature);
-        var response = completions.Result.Completions[0].Text.Trim();
+         var completions = await openai.Completions.CreateCompletionAsync(completionRequest.Prompt, completionRequest.Model, max_tokens: 1000, completionRequest.Temperature);
+        var response = completions.Completions[0].Text.Trim();
+        
 
         Console.WriteLine("(Responing to : " + message.Author.Username + "#" + message.Author.DiscriminatorValue + ") " + response.Trim());
 
