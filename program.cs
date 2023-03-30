@@ -1,12 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
-using OpenAI_API;
 using Discord;
 using Discord.WebSocket;
-using OpenAI_API.Completions;
-using Discord.Interactions;
 using Newtonsoft.Json.Linq;
+using OpenAI_API;
+using OpenAI_API.Completions;
 
 public class Program
 {
@@ -21,17 +22,17 @@ public class Program
         if (!File.Exists(apiKeys))
         {
             Console.WriteLine("File not found.");
-            File.Create(apiKeys);
+            File.Create(apiKeys).Close();
         }
 
-        JObject json = JObject.Parse(File.ReadAllText(apiKeys));
+        JObject json = JObject.Parse(await File.ReadAllTextAsync(apiKeys));
         JToken discordToken = json["discordToken"];
 
-        string Filename = "trainingdata.json";
-        if (!File.Exists(Filename))
+        string filename = "trainingdata.json";
+        if (!File.Exists(filename))
         {
             Console.WriteLine("File not found.");
-            File.Create(Filename);
+            File.Create(filename).Close();
         }
 
         // Set up memory file path
@@ -53,15 +54,17 @@ public class Program
 
     private async Task MessageReceived(SocketMessage message)
     {
-        string input = message.ToString();
-        Console.WriteLine("(" + message.Author.Username + "#" + message.Author.DiscriminatorValue + ") " + message.Content.ToString());
+        if (message.Author.IsBot) return;
+
+        string input = message.Content;
+        Console.WriteLine($"({message.Author.Username}#{message.Author.DiscriminatorValue}) {input}");
 
         // Remove symbols
         string filteredInput = new string(input.Where(c => Char.IsLetterOrDigit(c) || Char.IsWhiteSpace(c)).ToArray());
 
-        Dictionary<string, string> blacklist = new Dictionary<string, string>()
+        Dictionary<string, HashSet<string>> blacklist = new Dictionary<string, HashSet<string>>()
         {
-            {"insert slur here", "filtered"}
+            ["insert channel id here"] = new HashSet<string>() { "insert slur here" }
         };
 
         if (input.Contains("::clear"))
@@ -79,13 +82,10 @@ public class Program
         }
 
         string apiKeys = "keys.json";
-        JObject json = JObject.Parse(File.ReadAllText(apiKeys));
+        JObject json = JObject.Parse(await File.ReadAllTextAsync(apiKeys));
         JToken openAIToken = json.SelectToken("openAIToken");
 
         var openai = new OpenAIAPI(openAIToken.ToString());
-
-        //if (message.Author.Id != 332582777897746444 && message.Author.Id != 971242993774391396) return;
-        if (message.Author.IsBot) return;
 
         // Check if user has interacted with the bot before
         var user = message.Author;
@@ -93,7 +93,7 @@ public class Program
         var memory = await GetUserMemory(user.Id);
 
         // Use OpenAI API to generate a response based on user memory and message content
-        var prompt = message.Content;
+        var prompt = memory + filteredInput;
 
         // Store user memory in file
         await SaveUserMemory(user.Id, prompt);
@@ -108,19 +108,23 @@ public class Program
         var completions = await openai.Completions.CreateCompletionAsync(completionRequest.Prompt, completionRequest.Model, max_tokens: 1000, completionRequest.Temperature);
         var response = completions.Completions[0].Text.Trim();
 
-
-        Console.WriteLine("(Responing to : " + message.Author.Username + "#" + message.Author.DiscriminatorValue + ") " + response.Trim());
+        Console.WriteLine($"(Responing to: {message.Author.Username}#{message.Author.DiscriminatorValue}) {response}");
 
         Console.WriteLine(memory);
 
-        foreach (string key in blacklist.Keys)
+        // Check for blacklisted words
+        HashSet<string> channelBlacklist = null;
+        if (blacklist.TryGetValue(message.Channel.Id.ToString(), out channelBlacklist))
         {
-            if (response.Contains(key.ToLower()))
+            foreach (string word in channelBlacklist)
             {
-                Console.WriteLine(blacklist[key]);
+                if (response.Contains(word))
+                {
+                    Console.WriteLine("Filtered");
 
-                await message.Channel.SendMessageAsync("Filtered");
-                return;
+                    await message.Channel.SendMessageAsync("Filtered");
+                    return;
+                }
             }
         }
 
