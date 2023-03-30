@@ -13,6 +13,7 @@ public class Program
 {
     private DiscordSocketClient _client;
     private string _memoryFilePath;
+    private string lastResponse = ""; // keep track of last response to prevent infinite loops
 
     public static void Main(string[] args) => new Program().MainAsync().GetAwaiter().GetResult();
 
@@ -47,9 +48,12 @@ public class Program
 
         _client.MessageReceived += MessageReceived;
 
+        // ADD THIS LINE
+        Console.WriteLine("Press any key to exit.");
         Console.ReadKey();
 
         await _client.StopAsync();
+        await _client.LogoutAsync();
     }
 
     private async Task MessageReceived(SocketMessage message)
@@ -57,6 +61,10 @@ public class Program
         if (message.Author.IsBot) return;
 
         string input = message.Content;
+
+        // Check if input is not identical to last response to avoid infinite loop
+        if (input == lastResponse) return;
+
         Console.WriteLine($"({message.Author.Username}#{message.Author.DiscriminatorValue}) {input}");
 
         // Remove symbols
@@ -108,10 +116,6 @@ public class Program
         var completions = await openai.Completions.CreateCompletionAsync(completionRequest.Prompt, completionRequest.Model, max_tokens: 1000, completionRequest.Temperature);
         var response = completions.Completions[0].Text.Trim();
 
-        Console.WriteLine($"(Responing to: {message.Author.Username}#{message.Author.DiscriminatorValue}) {response}");
-
-        Console.WriteLine(memory);
-
         // Check for blacklisted words
         HashSet<string> channelBlacklist = null;
         if (blacklist.TryGetValue(message.Channel.Id.ToString(), out channelBlacklist))
@@ -128,6 +132,8 @@ public class Program
             }
         }
 
+        // Store last response and send message
+        lastResponse = response;
         await message.Channel.SendMessageAsync(response);
     }
 
@@ -138,19 +144,11 @@ public class Program
             return "";
         }
 
-        var lines = await File.ReadAllLinesAsync(_memoryFilePath);
-        List<string> userMemories = new List<string>();
-        foreach (var line in lines)
-        {
-            var parts = line.Split(" : ");
-            if (parts.Length == 2 && ulong.TryParse(parts[0], out ulong id) && id == userId)
-            {
-                userMemories.Add(parts[1]);
-            }
-        }
+        var line = (await File.ReadAllLinesAsync(_memoryFilePath))
+                        .FirstOrDefault(l => l.StartsWith($"{userId}:"));
+        if (line == null) return "";
 
-        // Join all memories into a single string and return it
-        return string.Join(Environment.NewLine, userMemories);
+        return line.Substring(line.IndexOf(':') + 1); ;
     }
 
     private async Task SaveUserMemory(ulong userId, string memory)
@@ -169,7 +167,7 @@ public class Program
             lines.Remove(existingLine);
         }
 
-        lines.Add($"{userId} : {memory}");
+        lines.Add($"{userId}:{memory}");
 
         // Remove the oldest lines if the maximum file size is reached
         if (lines.Count > maxLines)
