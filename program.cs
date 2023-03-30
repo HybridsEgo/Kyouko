@@ -103,11 +103,11 @@ public class Program
         CompletionRequest completionRequest = new CompletionRequest();
         completionRequest.Prompt = prompt;
         completionRequest.Model = new OpenAI_API.Models.Model("text-davinci-003");
-        completionRequest.Temperature = 1;
+        completionRequest.Temperature = 0.5;
 
-         var completions = await openai.Completions.CreateCompletionAsync(completionRequest.Prompt, completionRequest.Model, max_tokens: 1000, completionRequest.Temperature);
+        var completions = await openai.Completions.CreateCompletionAsync(completionRequest.Prompt, completionRequest.Model, max_tokens: 1000, completionRequest.Temperature);
         var response = completions.Completions[0].Text.Trim();
-        
+
 
         Console.WriteLine("(Responing to : " + message.Author.Username + "#" + message.Author.DiscriminatorValue + ") " + response.Trim());
 
@@ -135,21 +135,25 @@ public class Program
         }
 
         var lines = await File.ReadAllLinesAsync(_memoryFilePath);
+        List<string> userMemories = new List<string>();
         foreach (var line in lines)
         {
             var parts = line.Split(" : ");
             if (parts.Length == 2 && ulong.TryParse(parts[0], out ulong id) && id == userId)
             {
-                return parts[1];
+                userMemories.Add(parts[1]);
             }
         }
 
-        return "";
+        // Join all memories into a single string and return it
+        return string.Join(Environment.NewLine, userMemories);
     }
 
     private async Task SaveUserMemory(ulong userId, string memory)
     {
+        const int maxLines = 100; // maximum number of lines in memory file
         var lines = new List<string>();
+
         if (File.Exists(_memoryFilePath))
         {
             lines = (await File.ReadAllLinesAsync(_memoryFilePath)).ToList();
@@ -158,10 +162,16 @@ public class Program
         var existingLine = lines.FirstOrDefault(x => x.StartsWith($"{userId}:"));
         if (existingLine != null)
         {
-            //lines.Remove(existingLine);
+            lines.Remove(existingLine);
         }
 
         lines.Add($"{userId} : {memory}");
+
+        // Remove the oldest lines if the maximum file size is reached
+        if (lines.Count > maxLines)
+        {
+            lines.RemoveRange(0, lines.Count - maxLines);
+        }
 
         await File.WriteAllLinesAsync(_memoryFilePath, lines);
     }
