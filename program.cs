@@ -17,65 +17,70 @@ public class Program
 
     public static void Main(string[] args) => new Program().MainAsync().GetAwaiter().GetResult();
 
-    public async Task MainAsync()
-    {
-        string apiKeys = "keys.json";
-        if (!File.Exists(apiKeys))
-        {
-            Console.WriteLine("File not found.");
-            File.Create(apiKeys).Close();
-        }
-
-        JObject json = JObject.Parse(await File.ReadAllTextAsync(apiKeys));
-        JToken discordToken = json["discordToken"];
-
-        string filename = "trainingdata.json";
-        if (!File.Exists(filename))
-        {
-            Console.WriteLine("File not found.");
-            File.Create(filename).Close();
-        }
-
-        // Set up memory file path
-        _memoryFilePath = "user_memory.txt";
-
-        // Set up Discord bot client
-        _client = new DiscordSocketClient();
-        _client.Log += Log;
-
-        await _client.LoginAsync(TokenType.Bot, discordToken.ToString());
-        await _client.StartAsync();
-
-        _client.MessageReceived += MessageReceived;
-
-        // ADD THIS LINE
-        Console.WriteLine("Press any key to exit.");
-        Console.ReadKey();
-
-        await _client.StopAsync();
-        await _client.LogoutAsync();
-    }
+   public async Task MainAsync()
+   {
+       string apiKeys = "keys.json";
+       if (!File.Exists(apiKeys))
+       {
+           Console.WriteLine("File not found.");
+           File.Create(apiKeys).Close();
+       }
+   
+       JObject json = JObject.Parse(await File.ReadAllTextAsync(apiKeys));
+       JToken discordToken = json["discordToken"];
+   
+       string filename = "trainingdata.json";
+       if (!File.Exists(filename))
+       {
+           Console.WriteLine("File not found.");
+           File.Create(filename).Close();
+       }
+   
+       // Set up memory file path
+       _memoryFilePath = "user_memory.txt";
+   
+       // Set up Discord bot client
+       _client = new DiscordSocketClient();
+       _client.Log += Log;
+   
+       await _client.LoginAsync(TokenType.Bot, discordToken.ToString());
+       await _client.StartAsync();
+   
+       _client.MessageReceived += MessageReceived;
+   
+       // Wait for user to press a key before exiting
+       Console.WriteLine("Press any key to exit.");
+       Console.ReadKey(true); 
+   
+       // Stop the Discord bot client
+       await _client.StopAsync();
+   }
+       
 
     private async Task MessageReceived(SocketMessage message)
     {
-        if (message.Author.IsBot) return;
+        if (message.Author.IsBot || string.IsNullOrWhiteSpace(message.Content))
+        {
+            return;
+        }
 
-        string input = message.Content;
+        // Check if input is identical to last response to avoid infinite loop
+        if (message.Content == lastResponse)
+        {
+            return;
+        }
 
-        // Check if input is not identical to last response to avoid infinite loop
-        if (input == lastResponse) return;
-
-        Console.WriteLine($"({message.Author.Username}#{message.Author.DiscriminatorValue}) {input}");
+        Console.WriteLine($"({message.Author.Username}#{message.Author.DiscriminatorValue}) {message.Content}");
 
         // Remove symbols
-        string filteredInput = new string(input.Where(c => Char.IsLetterOrDigit(c) || Char.IsWhiteSpace(c)).ToArray());
+        string filteredInput = new string(message.Content.Where(c => Char.IsLetterOrDigit(c) || Char.IsWhiteSpace(c)).ToArray());
 
         Dictionary<string, HashSet<string>> blacklist = new Dictionary<string, HashSet<string>>()
         {
             ["insert channel id here"] = new HashSet<string>() { "insert slur here" }
         };
 
-        if (input.Contains("::clear"))
+        if (filteredInput.Contains("::clear"))
         {
             string FilePath = "user_memory.txt";
 
@@ -144,11 +149,16 @@ public class Program
             return "";
         }
 
-        var line = (await File.ReadAllLinesAsync(_memoryFilePath))
-                        .FirstOrDefault(l => l.StartsWith($"{userId}:"));
-        if (line == null) return "";
+        var lines = await File.ReadAllLinesAsync(_memoryFilePath);
 
-        return line.Substring(line.IndexOf(':') + 1); ;
+        // Get the last Ten lines for the user's ID
+        var lastTenLines = lines.Reverse().Where(l => l.StartsWith($"{userId}:")).Take(10);
+
+
+        // Join the last Ten lines into a single string
+        var memory = string.Join("", lastTenLines.Select(l => l.Substring(l.IndexOf(':') + 1)));
+
+        return memory;
     }
 
     private async Task SaveUserMemory(ulong userId, string memory)
