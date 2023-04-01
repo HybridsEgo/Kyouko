@@ -17,45 +17,45 @@ public class Program
 
     public static void Main(string[] args) => new Program().MainAsync().GetAwaiter().GetResult();
 
-   public async Task MainAsync()
-   {
-       string apiKeys = "keys.json";
-       if (!File.Exists(apiKeys))
-       {
-           Console.WriteLine("File not found.");
-           File.Create(apiKeys).Close();
-       }
-   
-       JObject json = JObject.Parse(await File.ReadAllTextAsync(apiKeys));
-       JToken discordToken = json["discordToken"];
-   
-       string filename = "trainingdata.json";
-       if (!File.Exists(filename))
-       {
-           Console.WriteLine("File not found.");
-           File.Create(filename).Close();
-       }
-   
-       // Set up memory file path
-       _memoryFilePath = "user_memory.txt";
-   
-       // Set up Discord bot client
-       _client = new DiscordSocketClient();
-       _client.Log += Log;
-   
-       await _client.LoginAsync(TokenType.Bot, discordToken.ToString());
-       await _client.StartAsync();
-   
-       _client.MessageReceived += MessageReceived;
-   
-       // Wait for user to press a key before exiting
-       Console.WriteLine("Press any key to exit.");
-       Console.ReadKey(true); 
-   
-       // Stop the Discord bot client
-       await _client.StopAsync();
-   }
-       
+    public async Task MainAsync()
+    {
+        string apiKeys = "keys.json";
+        if (!File.Exists(apiKeys))
+        {
+            Console.WriteLine("File not found.");
+            File.Create(apiKeys).Close();
+        }
+
+        JObject json = JObject.Parse(await File.ReadAllTextAsync(apiKeys));
+        JToken discordToken = json["discordToken"];
+
+        string filename = "trainingdata.json";
+        if (!File.Exists(filename))
+        {
+            Console.WriteLine("File not found.");
+            File.Create(filename).Close();
+        }
+
+        // Set up memory file path
+        _memoryFilePath = "user_memory.txt";
+
+        // Set up Discord bot client
+        _client = new DiscordSocketClient();
+        _client.Log += Log;
+
+        await _client.LoginAsync(TokenType.Bot, discordToken.ToString());
+        await _client.StartAsync();
+
+        _client.MessageReceived += MessageReceived;
+
+        // Wait for user to press a key before exiting
+        Console.WriteLine("Press any key to exit.");
+        Console.ReadKey(true);
+
+        // Stop the Discord bot client
+        await _client.StopAsync();
+    }
+
 
     private async Task MessageReceived(SocketMessage message)
     {
@@ -80,7 +80,7 @@ public class Program
             ["insert channel id here"] = new HashSet<string>() { "insert slur here" }
         };
 
-        if (filteredInput.Contains("::clear"))
+        if (message.Content.StartsWith("::clear"))
         {
             string FilePath = "user_memory.txt";
 
@@ -116,7 +116,7 @@ public class Program
         CompletionRequest completionRequest = new CompletionRequest();
         completionRequest.Prompt = prompt;
         completionRequest.Model = new OpenAI_API.Models.Model("text-davinci-003");
-        completionRequest.Temperature = 0.5;
+        completionRequest.Temperature = 0.1;
 
         var completions = await openai.Completions.CreateCompletionAsync(completionRequest.Prompt, completionRequest.Model, max_tokens: 1000, completionRequest.Temperature);
         var response = completions.Completions[0].Text.Trim();
@@ -156,10 +156,12 @@ public class Program
 
 
         // Join the last Ten lines into a single string
-        var memory = string.Join("", lastTenLines.Select(l => l.Substring(l.IndexOf(':') + 1)));
+        var memory = string.Join("", lastTenLines.Select(l => l.Substring(l.IndexOf(':') + 2)));
 
         return memory;
     }
+
+
 
     private async Task SaveUserMemory(ulong userId, string memory)
     {
@@ -177,7 +179,7 @@ public class Program
             lines.Remove(existingLine);
         }
 
-        lines.Add($"{userId}:{memory}");
+        lines.Add($"{userId} : {memory}");
 
         // Remove the oldest lines if the maximum file size is reached
         if (lines.Count > maxLines)
