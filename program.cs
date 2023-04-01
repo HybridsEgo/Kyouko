@@ -77,7 +77,7 @@ public class Program
 
         Dictionary<string, HashSet<string>> blacklist = new Dictionary<string, HashSet<string>>()
         {
-            ["insert channel id here"] = new HashSet<string>() { "insert slur here" }
+            ["1090479634715516948"] = new HashSet<string>() { "Nigger","faggot","cracker","anglo","jews","queer","tranny","politics" }
         };
 
         if (message.Content.StartsWith("::clear"))
