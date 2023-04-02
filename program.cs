@@ -70,7 +70,7 @@ public class Program
             string filteredInput = new string(input.Where(c => Char.IsLetterOrDigit(c) || Char.IsWhiteSpace(c)).ToArray());
 
             //Blacklist filter
-            Dictionary<string, string> blacklist = new Dictionary<string, string>() { { "nigger", "filtered" } };
+            Dictionary<string, string> blacklist = new Dictionary<string, string>() { { "put ur bad words here", "filtered" } };
 
             if (input.Contains("::clear"))
             {
