@@ -12,10 +12,9 @@ using Discord.Commands;
 public class Program
 {
     private DiscordSocketClient? _client;
-    private string _memoryFolderPath = "user_memory.txt";
+    private string? _memoryFilePath;
     public string apiKeys = "keys.json";
     public JObject json = JObject.Parse(File.ReadAllText("keys.json"));
-
 
     public static void Main(string[] args) => new Program().MainAsync().GetAwaiter().GetResult();
 
@@ -34,6 +33,9 @@ public class Program
             File.Create(Filename);
         }
 
+        // Set up memory file path
+        _memoryFilePath = "user_memory.txt";
+
         // Set up Discord bot client
         _client = new DiscordSocketClient();
         _client.Log += message => { Log(message); return Task.CompletedTask; };
@@ -44,14 +46,6 @@ public class Program
         await _client.StartAsync();
 
         _client.MessageReceived += MessageReceived;
-        _client.ButtonExecuted += ButtonHandler;
-
-        var guildCommand = new SlashCommandBuilder().WithName("github")
-        .WithDescription("links the github for this project");
-        //await _client.Rest.CreateGlobalCommand(guildCommand.Build());
-
-        await _client.SetStatusAsync(UserStatus.DoNotDisturb);
-        await _client.SetGameAsync("I glow so brighly");
 
         Console.ReadKey();
 
@@ -66,7 +60,6 @@ public class Program
     {
         try
         {
-
             var msg = message as SocketUserMessage;
             var context = new CommandContext(_client, msg);
 
@@ -113,27 +106,19 @@ public class Program
             var openai = new OpenAIAPI(openAIToken.ToString());
 
             // Check if user has interacted with the bot before
-            var memory = await GetUserMemory(message.Author.Id);
+            var user = message.Author;
+
+            var memory = await GetUserMemory(user.Id);
 
             // Use OpenAI API to generate a response based on user memory and message content
-            var prompt = $"{memory} {message.Content}. (Act like you're Kyouko from Touhou Project! be gooofy and uwu!(Don't read that aloud)) ";
+            var prompt = $"{memory} {message.Content}. Act like you're Kyouko from Touhou Project! be gooofy!";
 
             // Store user memory in file
-            await SaveUserMemory(message.Author.Id, prompt);
+            await SaveUserMemory(user.Id, prompt);
 
-            var emojiList = new List<string>
-            {
-                "👌","👋", "🙌", "👀", "🙃", "🤔", "🤨"
-            };
+            var YourEmoji = new Emoji("👌");
 
-            // Select a random emoji
-            int index = random.Next(emojiList.Count);
-
-            // Result
-            var selectedEmoji = new Emoji(emojiList[index]);
-
-            // Add reaction which was the random result
-            await message.AddReactionAsync(selectedEmoji);
+            await message.AddReactionAsync(YourEmoji);
             await message.Channel.TriggerTypingAsync();
 
             CompletionRequest completionRequest = new CompletionRequest();
@@ -143,10 +128,6 @@ public class Program
 
             var completions = openai.Completions.CreateCompletionAsync(completionRequest.Prompt, completionRequest.Model, max_tokens: 100, completionRequest.Temperature);
             var response = completions.Result.Completions[0].Text.Trim();
-
-            // Store updated memory in file
-            var newMemory = $"{memory} {input} {response}";
-            await SaveUserMemory(message.Author.Id, newMemory);
 
             Console.WriteLine("(Responing to : " + message.Author.Username + "#" + message.Author.DiscriminatorValue + ") " + response.Trim());
 
@@ -168,10 +149,8 @@ public class Program
                     return;
                 }
             }
-            var buttonbuilder = new ComponentBuilder().WithButton("Github", null, ButtonStyle.Link, null, "https://github.com/HybridsEgo/Cosmic-Drip").WithButton("Debug", "debug", ButtonStyle.Danger);
 
             Random a = new Random();
-
             r = a.Next(0, 255); g = a.Next(0, 255); b = a.Next(0, 255);
             await context.Guild.GetRole(colorize).ModifyAsync(x => x.Color = new Color(r, g, b));
 
@@ -179,9 +158,7 @@ public class Program
             builder.WithDescription(response);
             builder.WithFooter("Replying to: " + message.Author.Username + "#" + message.Author.Discriminator);
 
-            //await context.Message.ReplyAsync(response, false, builder.Build(), null, null, buttonbuilder.Build());
-
-            await context.Message.ReplyAsync(response, false, null, null, null, buttonbuilder.Build());
+            await message.Channel.SendMessageAsync("", false, builder.Build());
         }
         catch (Exception ex)
         {
@@ -191,65 +168,48 @@ public class Program
 
     }
 
-    private string GetUserMemoryFilePath(ulong userId)
-    {
-        return Path.Combine(_memoryFolderPath, $"{userId}.txt");
-    }
-
     private async Task<string> GetUserMemory(ulong userId)
     {
-        var filePath = GetUserMemoryFilePath(userId);
-
-        if (!File.Exists(filePath))
+        if (!File.Exists(_memoryFilePath))
         {
             return "";
         }
 
-        return await File.ReadAllTextAsync(filePath);
+        var lines = await File.ReadAllLinesAsync(_memoryFilePath);
+        foreach (var line in lines)
+        {
+            var parts = line.Split(" : ");
+            if (parts.Length == 2 && ulong.TryParse(parts[0], out ulong id) && id == userId)
+            {
+                return parts[1];
+            }
+        }
+
+        return "";
     }
 
     private async Task SaveUserMemory(ulong userId, string memory)
     {
-        var filePath = GetUserMemoryFilePath(userId);
 
-        await File.WriteAllTextAsync(filePath, memory);
-    }
-
-    public async Task ButtonHandler(SocketMessageComponent component)
-    {
-        string FilePath = "user_memory.txt";
-
-        switch (component.Data.CustomId)
+        var lines = new List<string>();
+        if (File.Exists(_memoryFilePath))
         {
-            case "debug":
-                if (component.User.Id == 332582777897746444 || component.User.Id == 971242993774391396)
-                {
-                    // If file found, delete it
-                    File.Delete(FilePath);
-                    Console.WriteLine("File deleted.");
-                    await component.Channel.TriggerTypingAsync();
-                    await component.Channel.SendMessageAsync($"File deleted.");
-                    return;
-                }
-                else
-                {
-                    await component.Channel.TriggerTypingAsync();
-                    await component.Channel.SendMessageAsync(component.User.Mention + " You don't have access to use that!");
-                    return;
-                }
-
-                break;
+            lines = (await File.ReadAllLinesAsync(_memoryFilePath)).ToList();
         }
-    }
 
-    public async Task SlashCommandHandler(SocketSlashCommand command)
-    {
-        // Let's add a switch statement for the command name so we can handle multiple commands in one event.
-        switch (command.Data.Name)
+        var existingLineIndex = lines.FindIndex(x => x.StartsWith($"{userId}:"));
+        if (existingLineIndex != -1)
         {
-            case "github":
-                await command.RespondAsync($"https://github.com/HybridsEgo/Cosmic-Drip");
-                break;
+            var existingLineParts = lines[existingLineIndex].Split(" : ");
+            var existingMemory = existingLineParts[1];
+            memory = $"{existingMemory} {memory}";
+            lines[existingLineIndex] = $"{userId} : {memory}";
         }
+        else
+        {
+            lines.Add($"{userId} : {memory}");
+        }
+
+        await File.WriteAllLinesAsync(_memoryFilePath, lines);
     }
 }
