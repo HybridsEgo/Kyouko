@@ -1,39 +1,35 @@
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
+using OpenAI_API;
 using Discord;
 using Discord.WebSocket;
-using Newtonsoft.Json.Linq;
-using OpenAI_API;
 using OpenAI_API.Completions;
+using Discord.Interactions;
+using Newtonsoft.Json.Linq;
 
 public class Program
 {
-    private DiscordSocketClient _client;
-    private string _memoryFilePath;
-    private string lastResponse = ""; // keep track of last response to prevent infinite loops
+    private DiscordSocketClient? _client;
+    private string? _memoryFilePath;
+    public string apiKeys = "keys.json";
+    public JObject json = JObject.Parse(File.ReadAllText("keys.json"));
 
     public static void Main(string[] args) => new Program().MainAsync().GetAwaiter().GetResult();
 
     public async Task MainAsync()
     {
-        string apiKeys = "keys.json";
         if (!File.Exists(apiKeys))
         {
             Console.WriteLine("File not found.");
-            File.Create(apiKeys).Close();
+            File.Create(apiKeys);
         }
 
-        JObject json = JObject.Parse(await File.ReadAllTextAsync(apiKeys));
-        JToken discordToken = json["discordToken"];
-
-        string filename = "trainingdata.json";
-        if (!File.Exists(filename))
+        string Filename = "trainingdata.json";
+        if (!File.Exists(Filename))
         {
             Console.WriteLine("File not found.");
-            File.Create(filename).Close();
+            File.Create(Filename);
         }
 
         // Set up memory file path
@@ -41,105 +37,117 @@ public class Program
 
         // Set up Discord bot client
         _client = new DiscordSocketClient();
-        _client.Log += Log;
+        _client.Log += message => { Log(message); return Task.CompletedTask; };
+
+        JToken discordToken = json["discordToken"];
 
         await _client.LoginAsync(TokenType.Bot, discordToken.ToString());
         await _client.StartAsync();
 
         _client.MessageReceived += MessageReceived;
 
-        // Wait for user to press a key before exiting
-        Console.WriteLine("Press any key to exit.");
-        Console.ReadKey(true);
+        Console.ReadKey();
 
-        // Stop the Discord bot client
         await _client.StopAsync();
     }
-
-
+    private Task Log(LogMessage message)
+    {
+        Console.WriteLine(message.ToString());
+        return Task.CompletedTask;
+    }
     private async Task MessageReceived(SocketMessage message)
     {
-        if (message.Author.IsBot || string.IsNullOrWhiteSpace(message.Content))
+        try
         {
-            return;
-        }
+            if (message.Author.IsBot) return;
+            if (message.Channel.Id == 172857154598862848 || message.Channel.Id == 357190188386222081) return;
+            if (message.Channel.Id == 700450393657704490 || message.Channel.Id == 934629472148283392) return;
+            if (message.Channel.Id == 177528507235041280 || message.Channel.Id == 408320904905621515) return;
+            if (message.Channel.Id == 763483232745685022 || message.Channel.Id == 1014234315112054894) return;
+            if (message.Channel.Id == 825106348030033930 || message.Channel.Id == 843388773617106975) return;
+            if (message.Author.Id == 332582777897746444 && message.Author.Id == 815425069656440883) return;
 
-        // Check if input is identical to last response to avoid infinite loop
-        if (message.Content == lastResponse)
-        {
-            return;
-        }
+            string input = message.ToString();
+            Console.WriteLine("(" + message.Author.Username + "#" + message.Author.DiscriminatorValue + " : in - " + message.Channel.Name + ") " + message.Content.ToString().Trim());
 
-        Console.WriteLine($"({message.Author.Username}#{message.Author.DiscriminatorValue}) {message.Content}");
+            // Remove symbols
+            string filteredInput = new string(input.Where(c => Char.IsLetterOrDigit(c) || Char.IsWhiteSpace(c)).ToArray());
 
-        // Remove symbols
-        string filteredInput = new string(message.Content.Where(c => Char.IsLetterOrDigit(c) || Char.IsWhiteSpace(c)).ToArray());
+            //Blacklist filter
+            Dictionary<string, string> blacklist = new Dictionary<string, string>() { { "nigger", "filtered" } };
 
-        Dictionary<string, HashSet<string>> blacklist = new Dictionary<string, HashSet<string>>()
-        {
-            ["1090479634715516948"] = new HashSet<string>() { "Nigger","faggot","cracker","anglo","jews","queer","tranny","politics" }
-        };
-
-        if (message.Content.StartsWith("::clear"))
-        {
-            string FilePath = "user_memory.txt";
-
-            if (File.Exists(FilePath))
+            if (input.Contains("::clear"))
             {
-                // If file found, delete it    
-                File.Delete(FilePath);
-                Console.WriteLine("File deleted.");
+                string FilePath = "user_memory.txt";
+
+                if (File.Exists(FilePath))
+                {
+                    // If file found, delete it    
+                    File.Delete(FilePath);
+                    Console.WriteLine("File deleted.");
+                }
+                return;
             }
 
-            return;
-        }
-
-        string apiKeys = "keys.json";
-        JObject json = JObject.Parse(await File.ReadAllTextAsync(apiKeys));
-        JToken openAIToken = json.SelectToken("openAIToken");
-
-        var openai = new OpenAIAPI(openAIToken.ToString());
-
-        // Check if user has interacted with the bot before
-        var user = message.Author;
-
-        var memory = await GetUserMemory(user.Id);
-
-        // Use OpenAI API to generate a response based on user memory and message content
-        var prompt = memory + filteredInput;
-
-        // Store user memory in file
-        await SaveUserMemory(user.Id, prompt);
-
-        await message.Channel.TriggerTypingAsync();
-
-        CompletionRequest completionRequest = new CompletionRequest();
-        completionRequest.Prompt = prompt;
-        completionRequest.Model = new OpenAI_API.Models.Model("text-davinci-003");
-        completionRequest.Temperature = 0.1;
-
-        var completions = await openai.Completions.CreateCompletionAsync(completionRequest.Prompt, completionRequest.Model, max_tokens: 1000, completionRequest.Temperature);
-        var response = completions.Completions[0].Text.Trim();
-
-        // Check for blacklisted words
-        HashSet<string> channelBlacklist = null;
-        if (blacklist.TryGetValue(message.Channel.Id.ToString(), out channelBlacklist))
-        {
-            foreach (string word in channelBlacklist)
+            if (input.Contains("@"))
             {
-                if (response.Contains(word))
+                await message.Channel.SendMessageAsync("Filtered");
+                return;
+            }
+
+            JToken openAIToken = json.SelectToken("openAIToken");
+            var openai = new OpenAIAPI(openAIToken.ToString());
+
+            // Check if user has interacted with the bot before
+            var user = message.Author;
+
+            var memory = await GetUserMemory(user.Id);
+
+            // Use OpenAI API to generate a response based on user memory and message content
+            var prompt = $"{memory} {message.Content}. Act like you're Kyouko from Touhou Project!";
+
+            // Store user memory in file
+            await SaveUserMemory(user.Id, prompt);
+
+            await message.Channel.TriggerTypingAsync();
+
+            CompletionRequest completionRequest = new CompletionRequest();
+            completionRequest.Prompt = prompt;
+            completionRequest.Model = new OpenAI_API.Models.Model("text-davinci-003");
+            completionRequest.Temperature = 0.9;
+
+            var completions = openai.Completions.CreateCompletionAsync(completionRequest.Prompt, completionRequest.Model, max_tokens: 100, completionRequest.Temperature);
+            var response = completions.Result.Completions[0].Text.Trim();
+
+            Console.WriteLine("(Responing to : " + message.Author.Username + "#" + message.Author.DiscriminatorValue + ") " + response.Trim());
+
+            Console.WriteLine(memory);
+
+            foreach (string key in blacklist.Keys)
+            {
+                if (response.Contains("@"))
                 {
-                    Console.WriteLine("Filtered");
+                    await message.Channel.SendMessageAsync("Filtered");
+                    return;
+                }
+
+                if (response.Contains(key.ToLower()))
+                {
+                    Console.WriteLine(blacklist[key]);
 
                     await message.Channel.SendMessageAsync("Filtered");
                     return;
                 }
             }
+
+            await message.Channel.SendMessageAsync(response);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            return;
         }
 
-        // Store last response and send message
-        lastResponse = response;
-        await message.Channel.SendMessageAsync(response);
     }
 
     private async Task<string> GetUserMemory(ulong userId)
@@ -150,49 +158,39 @@ public class Program
         }
 
         var lines = await File.ReadAllLinesAsync(_memoryFilePath);
+        foreach (var line in lines)
+        {
+            var parts = line.Split(" : ");
+            if (parts.Length == 2 && ulong.TryParse(parts[0], out ulong id) && id == userId)
+            {
+                return parts[1];
+            }
+        }
 
-        // Get the last Ten lines for the user's ID
-        var lastTenLines = lines.Reverse().Where(l => l.StartsWith($"{userId}:")).Take(10);
-
-
-        // Join the last Ten lines into a single string
-        var memory = string.Join("", lastTenLines.Select(l => l.Substring(l.IndexOf(':') + 2)));
-
-        return memory;
+        return "";
     }
-
-
 
     private async Task SaveUserMemory(ulong userId, string memory)
     {
-        const int maxLines = 100; // maximum number of lines in memory file
         var lines = new List<string>();
-
         if (File.Exists(_memoryFilePath))
         {
             lines = (await File.ReadAllLinesAsync(_memoryFilePath)).ToList();
         }
 
-        var existingLine = lines.FirstOrDefault(x => x.StartsWith($"{userId}:"));
-        if (existingLine != null)
+        var existingLineIndex = lines.FindIndex(x => x.StartsWith($"{userId}:"));
+        if (existingLineIndex != -1)
         {
-            lines.Remove(existingLine);
+            var existingLineParts = lines[existingLineIndex].Split(" : ");
+            var existingMemory = existingLineParts[1];
+            memory = $"{existingMemory} {memory}";
+            lines[existingLineIndex] = $"{userId} : {memory}";
         }
-
-        lines.Add($"{userId} : {memory}");
-
-        // Remove the oldest lines if the maximum file size is reached
-        if (lines.Count > maxLines)
+        else
         {
-            lines.RemoveRange(0, lines.Count - maxLines);
+            lines.Add($"{userId} : {memory}");
         }
 
         await File.WriteAllLinesAsync(_memoryFilePath, lines);
-    }
-
-    private Task Log(LogMessage msg)
-    {
-        Console.WriteLine(msg.ToString());
-        return Task.CompletedTask;
     }
 }
