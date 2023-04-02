@@ -7,6 +7,7 @@ using Discord.WebSocket;
 using OpenAI_API.Completions;
 using Discord.Interactions;
 using Newtonsoft.Json.Linq;
+using Discord.Commands;
 
 public class Program
 {
@@ -59,6 +60,16 @@ public class Program
     {
         try
         {
+            var msg = message as SocketUserMessage;
+            var context = new CommandContext(_client, msg);
+
+            ulong colorize = 674068746167386149;
+            int r = 0; int g = 0; int b = 0;
+
+            var random = new Random();
+            r = random.Next(0, 255); g = random.Next(0, 255); b = random.Next(0, 255);
+            EmbedBuilder builder = new EmbedBuilder();
+
             if (message.Author.IsBot) return;
             if (message.Channel.Id != 1091941641729888376) return;
             //if (message.Author.Id == 332582777897746444 && message.Author.Id == 815425069656440883) return;
@@ -70,7 +81,7 @@ public class Program
             string filteredInput = new string(input.Where(c => Char.IsLetterOrDigit(c) || Char.IsWhiteSpace(c)).ToArray());
 
             //Blacklist filter
-            Dictionary<string, string> blacklist = new Dictionary<string, string>() { { "put ur bad words here", "filtered" } };
+            Dictionary<string, string> blacklist = new Dictionary<string, string>() { { "bad words here", "filtered" } };
 
             if (input.Contains("::clear"))
             {
@@ -100,11 +111,14 @@ public class Program
             var memory = await GetUserMemory(user.Id);
 
             // Use OpenAI API to generate a response based on user memory and message content
-            var prompt = $"{memory} {message.Content}. Act like you're Kyouko from Touhou Project! be gooofy";
+            var prompt = $"{memory} {message.Content}. Act like you're Kyouko from Touhou Project! be gooofy!";
 
             // Store user memory in file
             await SaveUserMemory(user.Id, prompt);
 
+            var YourEmoji = new Emoji("👌");
+
+            await message.AddReactionAsync(YourEmoji);
             await message.Channel.TriggerTypingAsync();
 
             CompletionRequest completionRequest = new CompletionRequest();
@@ -123,7 +137,7 @@ public class Program
             {
                 if (response.Contains("@"))
                 {
-                    await message.Channel.SendMessageAsync("Filtered");
+                    //await message.Channel.SendMessageAsync("Filtered");
                     return;
                 }
 
@@ -136,7 +150,15 @@ public class Program
                 }
             }
 
-            await message.Channel.SendMessageAsync(response);
+            Random a = new Random();
+            r = a.Next(0, 255); g = a.Next(0, 255); b = a.Next(0, 255);
+            await context.Guild.GetRole(colorize).ModifyAsync(x => x.Color = new Color(r, g, b));
+
+            builder.WithColor(r, g, b);
+            builder.WithDescription(response);
+            builder.WithFooter("Replying to: " + message.Author.Username + "#" + message.Author.Discriminator);
+
+            await message.Channel.SendMessageAsync("", false, builder.Build());
         }
         catch (Exception ex)
         {
