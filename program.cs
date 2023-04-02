@@ -60,12 +60,8 @@ public class Program
         try
         {
             if (message.Author.IsBot) return;
-            if (message.Channel.Id == 172857154598862848 || message.Channel.Id == 357190188386222081) return;
-            if (message.Channel.Id == 700450393657704490 || message.Channel.Id == 934629472148283392) return;
-            if (message.Channel.Id == 177528507235041280 || message.Channel.Id == 408320904905621515) return;
-            if (message.Channel.Id == 763483232745685022 || message.Channel.Id == 1014234315112054894) return;
-            if (message.Channel.Id == 825106348030033930 || message.Channel.Id == 843388773617106975) return;
-            if (message.Author.Id == 332582777897746444 && message.Author.Id == 815425069656440883) return;
+            if (message.Channel.Id != 1091941641729888376) return;
+            //if (message.Author.Id == 332582777897746444 && message.Author.Id == 815425069656440883) return;
 
             string input = message.ToString();
             Console.WriteLine("(" + message.Author.Username + "#" + message.Author.DiscriminatorValue + " : in - " + message.Channel.Name + ") " + message.Content.ToString().Trim());
@@ -104,7 +100,7 @@ public class Program
             var memory = await GetUserMemory(user.Id);
 
             // Use OpenAI API to generate a response based on user memory and message content
-            var prompt = $"{memory} {message.Content}. Act like you're Kyouko from Touhou Project!";
+            var prompt = $"{memory} {message.Content}. Act like you're Kyouko from Touhou Project! be gooofy";
 
             // Store user memory in file
             await SaveUserMemory(user.Id, prompt);
@@ -172,6 +168,7 @@ public class Program
 
     private async Task SaveUserMemory(ulong userId, string memory)
     {
+
         var lines = new List<string>();
         if (File.Exists(_memoryFilePath))
         {
