@@ -46,6 +46,7 @@ public class Program
         await _client.StartAsync();
 
         _client.MessageReceived += MessageReceived;
+        _client.ButtonExecuted += ButtonHandler;
 
         Console.ReadKey();
 
@@ -116,9 +117,19 @@ public class Program
             // Store user memory in file
             await SaveUserMemory(user.Id, prompt);
 
-            var YourEmoji = new Emoji("👌");
+            var emojiList = new List<string>
+            {
+                "👌","👋", "🙌", "👀", "🙃", "🤔", "🤨"
+            };
 
-            await message.AddReactionAsync(YourEmoji);
+            // Select a random emoji
+            int index = random.Next(emojiList.Count);
+
+            // Result
+            var selectedEmoji = new Emoji(emojiList[index]);
+
+            // Add reaction which was the random result
+            await message.AddReactionAsync(selectedEmoji);
             await message.Channel.TriggerTypingAsync();
 
             CompletionRequest completionRequest = new CompletionRequest();
@@ -149,8 +160,10 @@ public class Program
                     return;
                 }
             }
+            var buttonbuilder = new ComponentBuilder().WithButton("Github", "github").WithButton("Debug", "debug");
 
             Random a = new Random();
+
             r = a.Next(0, 255); g = a.Next(0, 255); b = a.Next(0, 255);
             await context.Guild.GetRole(colorize).ModifyAsync(x => x.Color = new Color(r, g, b));
 
@@ -158,7 +171,7 @@ public class Program
             builder.WithDescription(response);
             builder.WithFooter("Replying to: " + message.Author.Username + "#" + message.Author.Discriminator);
 
-            await message.Channel.SendMessageAsync("", false, builder.Build());
+            await context.Message.ReplyAsync("", false, builder.Build(), null, null, buttonbuilder.Build());
         }
         catch (Exception ex)
         {
@@ -211,5 +224,22 @@ public class Program
         }
 
         await File.WriteAllLinesAsync(_memoryFilePath, lines);
+    }
+
+    public async Task ButtonHandler(SocketMessageComponent component)
+    {
+        string FilePath = "user_memory.txt";
+
+        switch (component.Data.CustomId)
+        {
+            case "github":
+                await component.RespondAsync($"https://github.com/HybridsEgo/Cosmic-Drip");
+                break;
+            case "debug":
+                // If file found, delete it    
+                File.Delete(FilePath);
+                Console.WriteLine("File deleted.");
+                break;
+        }
     }
 }
