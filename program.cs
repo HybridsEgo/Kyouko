@@ -80,8 +80,9 @@ public class Program
             EmbedBuilder builder = new EmbedBuilder();
 
             if (message.Author.IsBot) return;
-            if (message.Channel.Id != 1091941641729888376) return;
-            //if (message.Author.Id == 332582777897746444 && message.Author.Id == 815425069656440883) return;
+            if (message.Author.IsBot) return;
+            if (message.Channel.Id != 1091941641729888376 && message.Channel.Id != 1090479634715516948 && message.Channel.Id != 1089715502663880765) return;
+            //if (message.Author.Id == 332582777897746444 && message.Author
 
             string input = message.ToString();
             Console.WriteLine("(" + message.Author.Username + "#" + message.Author.DiscriminatorValue + " : in - " + message.Channel.Name + ") " + message.Content.ToString().Trim());
@@ -90,7 +91,7 @@ public class Program
             string filteredInput = new string(input.Where(c => Char.IsLetterOrDigit(c) || Char.IsWhiteSpace(c)).ToArray());
 
             //Blacklist filter
-            Dictionary<string, string> blacklist = new Dictionary<string, string>() { { "bad words here", "filtered" } };
+            Dictionary<string, string> blacklist = new Dictionary<string, string>() { { "Nigger", "filtered" } };
 
             if (input.Contains("::clear"))
             {
@@ -120,7 +121,8 @@ public class Program
             var memory = await GetUserMemory(user.Id);
 
             // Use OpenAI API to generate a response based on user memory and message content
-            var prompt = $"{memory} {message.Content}. (Act like you're Kyouko from Touhou Project! be gooofy) ";
+            var prompt = $"{memory} {message.Content}. (Act like you're Kyouko from Touhou Project .  (Don't read this aloud and dont talk about yourself in thirdperson or your name, use the context provided  to create a good reply)";
+
 
             // Store user memory in file
             await SaveUserMemory(user.Id, prompt);
@@ -172,8 +174,8 @@ public class Program
 
             Random a = new Random();
 
-            r = a.Next(0, 255); g = a.Next(0, 255); b = a.Next(0, 255);
-            await context.Guild.GetRole(colorize).ModifyAsync(x => x.Color = new Color(r, g, b));
+            //r = a.Next(0, 255); g = a.Next(0, 255); b = a.Next(0, 255);
+            //await context.Guild.GetRole(colorize).ModifyAsync(x => x.Color = new Color(r, g, b));
 
             builder.WithColor(r, g, b);
             builder.WithDescription(response);
@@ -202,9 +204,9 @@ public class Program
         foreach (var line in lines)
         {
             var parts = line.Split(" : ");
-            if (parts.Length == 2 && ulong.TryParse(parts[0], out ulong id) && id == userId)
+            if (parts.Length == 3 && ulong.TryParse(parts[0], out ulong id) && id == userId)
             {
-                return parts[1];
+                return $"{parts[1]} {parts[2]}";
             }
         }
 
@@ -224,13 +226,13 @@ public class Program
         if (existingLineIndex != -1)
         {
             var existingLineParts = lines[existingLineIndex].Split(" : ");
-            var existingMemory = existingLineParts[1];
+            var existingMemory = $"{existingLineParts[1]} {existingLineParts[2]}";
             memory = $"{existingMemory} {memory}";
-            lines[existingLineIndex] = $"{userId} : {memory}";
+            lines[existingLineIndex] = $"{userId} : {existingLineParts[1]} : {memory}";
         }
         else
         {
-            lines.Add($"{userId} : {memory}");
+            lines.Add($"{userId} : {DateTimeOffset.UtcNow.ToUnixTimeSeconds()} : {memory}");
         }
 
         await File.WriteAllLinesAsync(_memoryFilePath, lines);
@@ -249,13 +251,14 @@ public class Program
                     File.Delete(FilePath);
                     Console.WriteLine("File deleted.");
                     await component.Channel.TriggerTypingAsync();
-                    await component.Channel.SendMessageAsync(component.User.Mention + "pressed 'Debug' - File deleted.");
+                    await component.Channel.SendMessageAsync($"File deleted.");
                 }
                 else
                 {
                     await component.Channel.TriggerTypingAsync();
                     await component.Channel.SendMessageAsync(component.User.Mention + " You don't have access to use that!");
                 }
+
                 break;
         }
     }
