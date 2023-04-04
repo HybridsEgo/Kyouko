@@ -120,7 +120,7 @@ public class Program
             var memory = await GetUserMemory(user.Id);
 
             // Use OpenAI API to generate a response based on user memory and message content
-            var prompt = $"{memory} {message.Content}. (Act like you're Kyouko from Touhou Project! be gooofy and uwu!(Don't read that aloud)) ";
+            var prompt = $"{memory} {message.Content}. (Act like you're Kyouko from Touhou Project! be gooofy) ";
 
             // Store user memory in file
             await SaveUserMemory(user.Id, prompt);
@@ -168,7 +168,7 @@ public class Program
                     return;
                 }
             }
-            var buttonbuilder = new ComponentBuilder().WithButton("Github", null, ButtonStyle.Link, null, "https://github.com/HybridsEgo/Cosmic-Drip").WithButton("Debug", "debug", ButtonStyle.Danger);
+            var buttonbuilder = new ComponentBuilder().WithButton("Github", null, ButtonStyle.Link, null, "https://github.com/HybridsEgo/Cosmic-Drip").WithButton("Lore", null, ButtonStyle.Link, null, "https://en.touhouwiki.net/wiki/Touhou_Wiki").WithButton("Debug", "debug", ButtonStyle.Danger);
 
             Random a = new Random();
 
@@ -249,14 +249,13 @@ public class Program
                     File.Delete(FilePath);
                     Console.WriteLine("File deleted.");
                     await component.Channel.TriggerTypingAsync();
-                    await component.Channel.SendMessageAsync($"File deleted.");
+                    await component.Channel.SendMessageAsync(component.User.Mention + "pressed 'Debug' - File deleted.");
                 }
                 else
                 {
                     await component.Channel.TriggerTypingAsync();
                     await component.Channel.SendMessageAsync(component.User.Mention + " You don't have access to use that!");
                 }
-
                 break;
         }
     }
