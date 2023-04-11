@@ -13,9 +13,16 @@ public class Program
 {
     private DiscordSocketClient? _client;
     private string? _memoryFilePath;
+    private string PersonalityFilePath = "personality.txt";
     public string apiKeys = "keys.json";
     public JObject json = JObject.Parse(File.ReadAllText("keys.json"));
-
+    private string GetRandomPersonality()
+    {
+        var personalities = File.ReadAllLines("personality.txt");
+        var random = new Random();
+        var index = random.Next(0, personalities.Length);
+        return personalities[index];
+    }
     public static void Main(string[] args) => new Program().MainAsync().GetAwaiter().GetResult();
 
     public async Task MainAsync()
@@ -48,9 +55,9 @@ public class Program
         _client.MessageReceived += MessageReceived;
         _client.ButtonExecuted += ButtonHandler;
 
-        var guildCommand = new SlashCommandBuilder().WithName("github")
-        .WithDescription("links the github for this project");
-        //await _client.Rest.CreateGlobalCommand(guildCommand.Build());
+
+
+       
 
         await _client.SetStatusAsync(UserStatus.DoNotDisturb);
         await _client.SetGameAsync("I glow so brighly");
@@ -72,6 +79,7 @@ public class Program
             var msg = message as SocketUserMessage;
             var context = new CommandContext(_client, msg);
 
+
             ulong colorize = 674068746167386149;
             int r = 0; int g = 0; int b = 0;
 
@@ -91,7 +99,7 @@ public class Program
             string filteredInput = new string(input.Where(c => Char.IsLetterOrDigit(c) || Char.IsWhiteSpace(c)).ToArray());
 
             //Blacklist filter
-            Dictionary<string, string> blacklist = new Dictionary<string, string>() { { "N", "filtered" } };
+            Dictionary<string, string> blacklist = new Dictionary<string, string>() { { "slur here", "filtered" } };
 
             if (input.Contains("::clear"))
             {
@@ -121,7 +129,7 @@ public class Program
             var memory = await GetUserMemory(user.Id);
 
             // Use OpenAI API to generate a response based on user memory and message content
-            var prompt = $"{memory} {message.Content}. (Act like you're Kyouko from Touhou Project .  (Don't read this aloud and dont talk about yourself in thirdperson or your name, use the context provided  to create a good reply)";
+            var prompt = $"{GetRandomPersonality()} {memory} {message.Content}. (Act like you're Kyouko from Touhou Project .  (Don't read this aloud and dont talk about yourself in thirdperson or your name, use the context provided  to create a good reply))";
 
 
             // Store user memory in file
