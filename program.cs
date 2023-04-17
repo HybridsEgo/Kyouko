@@ -41,7 +41,7 @@ public class Program
         }
 
         // Set up memory file path
-        _memoryFilePath = "user_memory.txt";
+        _memoryFilePath = "Insert folder path";
 
         // Set up Discord bot client
         _client = new DiscordSocketClient();
@@ -57,7 +57,7 @@ public class Program
 
 
 
-       
+
 
         await _client.SetStatusAsync(UserStatus.DoNotDisturb);
         await _client.SetGameAsync("I glow so brighly");
@@ -76,7 +76,9 @@ public class Program
         try
         {
 
-            var msg = message as SocketUserMessage;
+            if (!(message is SocketUserMessage msg)) return;
+            if (msg.Author.IsBot) return;
+
             var context = new CommandContext(_client, msg);
 
 
@@ -87,9 +89,9 @@ public class Program
             r = random.Next(0, 255); g = random.Next(0, 255); b = random.Next(0, 255);
             EmbedBuilder builder = new EmbedBuilder();
 
-            if (message.Author.IsBot) return;
-            if (message.Author.IsBot) return;
-            if (message.Channel.Id != 1091941641729888376 && message.Channel.Id != 1090479634715516948 && message.Channel.Id != 1089715502663880765) return;
+         
+            if (message.Channel.Id != 1091941641729888376 && message.Channel.Id != 1090479634715516948 && message.Channel.Id != 1089715502663880765 && message.Channel.Id != 587117758911873035) return;
+
             //if (message.Author.Id == 332582777897746444 && message.Author
 
             string input = message.ToString();
@@ -98,21 +100,38 @@ public class Program
             // Remove symbols
             string filteredInput = new string(input.Where(c => Char.IsLetterOrDigit(c) || Char.IsWhiteSpace(c)).ToArray());
 
-            //Blacklist filter
+            // Blacklist filter
             Dictionary<string, string> blacklist = new Dictionary<string, string>() { { "slur here", "filtered" } };
 
-            if (input.Contains("::clear"))
+            foreach (string word in blacklist.Keys)
             {
-                string FilePath = "user_memory.txt";
-
-                if (File.Exists(FilePath))
-                {
-                    // If file found, delete it    
-                    File.Delete(FilePath);
-                    Console.WriteLine("File deleted.");
-                }
-                return;
+                string lowercaseWord = word.ToLower();
+                string lowercaseInput = filteredInput.ToLower();
+                filteredInput = lowercaseInput.Replace(lowercaseWord, blacklist[word]);
             }
+
+            if (filteredInput.Contains("::clear"))
+            {
+                if (File.Exists(@"Insert folder path"))
+                {
+                    // Delete the file for the current user
+                    File.Delete(Path.Combine(_memoryFilePath, $"{message.Author.Id}.txt"));
+                }
+
+                // Delete all other memory files
+                var directory = new DirectoryInfo("insert folder path");
+    foreach (var file in directory.GetFiles("*.txt"))
+    {
+        if (file.Name.StartsWith("user_memory") && file.Name != _memoryFilePath)
+        {
+            file.Delete();
+        }
+    }
+
+    Console.WriteLine("Memory files deleted.");
+    return;
+}
+
 
             if (input.Contains("@"))
             {
@@ -201,65 +220,59 @@ public class Program
 
     }
 
+    private string GetUserMemoryFileName(ulong userId)
+    {
+        return $"{userId}.txt";
+    }
+
     private async Task<string> GetUserMemory(ulong userId)
     {
-        if (!File.Exists(_memoryFilePath))
+        var fileName = Path.Combine(_memoryFilePath, $"user_memory_{userId}.txt");
+        if (!File.Exists(fileName))
         {
             return "";
         }
 
-        var lines = await File.ReadAllLinesAsync(_memoryFilePath);
-        foreach (var line in lines)
+        using (StreamReader reader = File.OpenText(fileName))
         {
-            var parts = line.Split(" : ");
-            if (parts.Length == 3 && ulong.TryParse(parts[0], out ulong id) && id == userId)
-            {
-                return $"{parts[1]} {parts[2]}";
-            }
+            return await reader.ReadToEndAsync();
         }
-
-        return "";
     }
 
     private async Task SaveUserMemory(ulong userId, string memory)
     {
-
-        var lines = new List<string>();
-        if (File.Exists(_memoryFilePath))
+        if (!Directory.Exists(_memoryFilePath))
         {
-            lines = (await File.ReadAllLinesAsync(_memoryFilePath)).ToList();
+            Directory.CreateDirectory(_memoryFilePath);
         }
 
-        var existingLineIndex = lines.FindIndex(x => x.StartsWith($"{userId}:"));
-        if (existingLineIndex != -1)
+        var fileName = Path.Combine(_memoryFilePath, $"user_memory_{userId}.txt");
+        using (StreamWriter writer = File.CreateText(fileName))
         {
-            var existingLineParts = lines[existingLineIndex].Split(" : ");
-            var existingMemory = $"{existingLineParts[1]} {existingLineParts[2]}";
-            memory = $"{existingMemory} {memory}";
-            lines[existingLineIndex] = $"{userId} : {existingLineParts[1]} : {memory}";
+            await writer.WriteAsync(memory);
         }
-        else
-        {
-            lines.Add($"{userId} : {DateTimeOffset.UtcNow.ToUnixTimeSeconds()} : {memory}");
-        }
-
-        await File.WriteAllLinesAsync(_memoryFilePath, lines);
     }
 
     public async Task ButtonHandler(SocketMessageComponent component)
     {
-        string FilePath = "user_memory.txt";
-
         switch (component.Data.CustomId)
         {
             case "debug":
+                // Check if the user is authorized to delete files
                 if (component.User.Id == 332582777897746444 || component.User.Id == 971242993774391396)
                 {
-                    // If file found, delete it
-                    File.Delete(FilePath);
-                    Console.WriteLine("File deleted.");
-                    await component.Channel.TriggerTypingAsync();
-                    await component.Channel.SendMessageAsync($"File deleted.");
+                    // Get the directory that contains the memory files
+                    string memoryDirectory = "Insert folder path";
+
+                    // Loop through all files in the directory
+                    foreach (string filePath in Directory.GetFiles(memoryDirectory, "*.txt"))
+                    {
+                        // If the file is found, delete it
+                        File.Delete(filePath);
+                        Console.WriteLine("File deleted: " + filePath);
+                    }
+
+                    Console.WriteLine("Files have been deleted.");
                 }
                 else
                 {
