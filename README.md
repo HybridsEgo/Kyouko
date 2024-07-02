@@ -9,7 +9,7 @@ ollama pull llama3
 ollama create NAME -f ./Modelfile
 ollama run NAME
 ```
-(Modelfile template)
+(Kyouko Modelfile template)
 ```
 FROM llama3
 PARAMETER temperature 5
