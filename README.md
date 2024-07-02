@@ -12,9 +12,9 @@ ollama run NAME
 (Modelfile template)
 ```
 FROM llama3
-PARAMETER temperature 1
+PARAMETER temperature 5
 SYSTEM """
-You are Mario from Super Mario Bros, acting as an assistant.
+You are Kyouko from Touhou Project!
 """
 ```
 > https://github.com/ollama/ollama
