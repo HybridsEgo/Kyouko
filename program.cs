@@ -17,7 +17,7 @@ public class Program
     public JObject json = JObject.Parse(File.ReadAllText("keys.json"));
     private static readonly string whitelistFilePath = "channelWhitelist.json";
     private static List<ulong> whitelistedChannelIds = new List<ulong>();
-    private string _memoryFilePath = "memory"; // Set the memory file path
+    private string _memoryFilePath = "memory";
 
     public static void Main(string[] args) => new Program().MainAsync().GetAwaiter().GetResult();
 
@@ -99,8 +99,7 @@ public class Program
             var selectedEmoji = new Emoji(emojiList[index]);
             await discordMessage.AddReactionAsync(selectedEmoji);
 
-            // Retrieve user memory
-            var memory = await GetUserMemory(msg.Author.Id); // Load memory for the specific user
+            var memory = await GetUserMemory(msg.Author.Id);
             var input = $"{memory}\nUser: {discordMessage.Author.Username} ({msg.Author.Id}): {discordMessage.Content.Trim()}"; // Include memory in the input for the language model
 
             ConversationContext llama3Context = null;
@@ -149,43 +148,40 @@ public class Program
         }
     }
 
-    // Method to get the file path for a user's memory
     private string GetUserMemoryFileName(ulong userId)
     {
         return Path.Combine(_memoryFilePath, $"user_memory_{userId}.txt");
     }
 
-    // Method to retrieve a user's memory
     private async Task<string> GetUserMemory(ulong userId)
     {
         var fileName = GetUserMemoryFileName(userId);
         if (!File.Exists(fileName))
         {
-            return ""; // Return an empty string if no memory file exists
+            return "";
         }
 
         using (StreamReader reader = File.OpenText(fileName))
         {
-            return await reader.ReadToEndAsync(); // Read the memory file's contents
+            return await reader.ReadToEndAsync();
         }
     }
 
-    // Method to save a user's memory
     private async Task SaveUserMemory(ulong userId, string memory)
     {
         if (!Directory.Exists(_memoryFilePath))
         {
-            Directory.CreateDirectory(_memoryFilePath); // Create the directory if it doesn't exist
+            Directory.CreateDirectory(_memoryFilePath);
         }
 
         var fileName = GetUserMemoryFileName(userId);
-        using (StreamWriter writer = new StreamWriter(fileName, append: true)) // Append to the memory file
+        using (StreamWriter writer = new StreamWriter(fileName, append: true))
         {
-            await writer.WriteLineAsync(memory); // Write the new memory to the file
+            await writer.WriteLineAsync(memory);
         }
     }
 
-    // Method to clear the specific memory file
+
     private async Task ClearUserMemory(ulong userId)
     {
         var fileName = GetUserMemoryFileName(userId);
@@ -193,7 +189,7 @@ public class Program
         {
             if (File.Exists(fileName))
             {
-                File.Delete(fileName); // Delete the specific memory file
+                File.Delete(fileName);
                 Console.WriteLine($"Memory file {fileName} deleted successfully.");
             }
             else
