@@ -15,9 +15,9 @@ public class Program
     private DiscordSocketClient? _client;
     public string apiKeys = "keys.json";
     public JObject json = JObject.Parse(File.ReadAllText("keys.json"));
-
     private static readonly string whitelistFilePath = "channelWhitelist.json";
     private static List<ulong> whitelistedChannelIds = new List<ulong>();
+    private string _memoryFilePath = "memory"; // Set the memory file path
 
     public static void Main(string[] args) => new Program().MainAsync().GetAwaiter().GetResult();
 
@@ -61,8 +61,7 @@ public class Program
         {
             Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss")} : Discord Gateway - Connected and ready!");
         }
-        
-        //Console.WriteLine(message.ToString());
+
         return Task.CompletedTask;
     }
 
@@ -92,40 +91,42 @@ public class Program
             g = random.Next(0, 255);
             b = random.Next(0, 255);
 
-
             Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss")} : Discord Message - User: " + discordMessage.Author.Username + " in: " + discordMessage.Channel.Name + " said: " + discordMessage.Content.Trim());
             Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss")} : Kyouko - Generating response...");
-            //Console.WriteLine("(" + discordMessage.Author.Username + " : in - " + discordMessage.Channel.Name + ") " + discordMessage.Content.Trim());
 
             var emojiList = new List<string> { "👌", "👋", "🙌", "👀", "🙃", "🤔", "🤨" };
             int index = random.Next(emojiList.Count);
             var selectedEmoji = new Emoji(emojiList[index]);
             await discordMessage.AddReactionAsync(selectedEmoji);
 
+            // Retrieve user memory
+            var memory = await GetUserMemory(msg.Author.Id); // Load memory for the specific user
+            var input = $"{memory}\nUser: {discordMessage.Author.Username} ({msg.Author.Id}): {discordMessage.Content.Trim()}"; // Include memory in the input for the language model
+
             ConversationContext llama3Context = null;
             StringBuilder messageHolder = new StringBuilder();
-            
+
             await discordMessage.Channel.TriggerTypingAsync();
 
-            Console.Write($"{DateTime.Now.ToString("HH:mm:ss")} : ");
+            Console.Write($"{DateTime.Now.ToString("HH:mm:ss")} : Kyouko -");
             await foreach (var stream in ollama.StreamCompletion(discordMessage.Content.Trim().ToString(), llama3Context))
             {
                 messageHolder.Append(stream.Response);
-                
+
                 // real time output
                 Console.Write(stream.Response);
             }
+            Console.WriteLine($" ");
 
-            //Console.WriteLine(messageHolder.ToString());
+            var newMemory = $"{memory}\nUser: {discordMessage.Author.Username} ({msg.Author.Id}): {discordMessage.Content.Trim()}";
+            await SaveUserMemory(msg.Author.Id, newMemory); // Save the conversation history for the user
 
             var buttonbuilder = new ComponentBuilder();
-                //.WithButton("Whitelist Channel", "whitelist", ButtonStyle.Primary)
-                //.WithButton("Remove Channel", "remove", ButtonStyle.Danger);
 
             builder.WithColor(r, g, b)
                    .WithDescription(messageHolder.ToString());
 
-            await context.Message.ReplyAsync(messageHolder.ToString(), components: buttonbuilder.Build());
+            await context.Message.ReplyAsync(messageHolder.ToString());
             Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss")} : Kyouko - Finished!");
         }
         catch (Exception ex)
@@ -148,142 +149,62 @@ public class Program
         }
     }
 
-    /*
-    private async Task HandleWhitelistButton(SocketMessageComponent component)
+    // Method to get the file path for a user's memory
+    private string GetUserMemoryFileName(ulong userId)
     {
+        return Path.Combine(_memoryFilePath, $"user_memory_{userId}.txt");
+    }
+
+    // Method to retrieve a user's memory
+    private async Task<string> GetUserMemory(ulong userId)
+    {
+        var fileName = GetUserMemoryFileName(userId);
+        if (!File.Exists(fileName))
+        {
+            return ""; // Return an empty string if no memory file exists
+        }
+
+        using (StreamReader reader = File.OpenText(fileName))
+        {
+            return await reader.ReadToEndAsync(); // Read the memory file's contents
+        }
+    }
+
+    // Method to save a user's memory
+    private async Task SaveUserMemory(ulong userId, string memory)
+    {
+        if (!Directory.Exists(_memoryFilePath))
+        {
+            Directory.CreateDirectory(_memoryFilePath); // Create the directory if it doesn't exist
+        }
+
+        var fileName = GetUserMemoryFileName(userId);
+        using (StreamWriter writer = new StreamWriter(fileName, append: true)) // Append to the memory file
+        {
+            await writer.WriteLineAsync(memory); // Write the new memory to the file
+        }
+    }
+
+    // Method to clear the specific memory file
+    private async Task ClearUserMemory(ulong userId)
+    {
+        var fileName = GetUserMemoryFileName(userId);
         try
         {
-            ulong channelId = component.Channel.Id;
-            if (!whitelistedChannelIds.Contains(channelId))
+            if (File.Exists(fileName))
             {
-                whitelistedChannelIds.Add(channelId);
-                SaveWhitelist();
-                await component.RespondAsync($"Channel {channelId} has been whitelisted!");
+                File.Delete(fileName); // Delete the specific memory file
+                Console.WriteLine($"Memory file {fileName} deleted successfully.");
             }
             else
             {
-                await component.RespondAsync($"Channel {channelId} is already whitelisted.");
-            }
-        }
-        catch
-        {
-            await component.RespondAsync("Unable to whitelist this channel!");
-        }
-    }
-
-    private async Task HandleRemoveButton(SocketMessageComponent component)
-    {
-        try
-        {
-            ulong channelId = component.Channel.Id;
-            if (whitelistedChannelIds.Contains(channelId))
-            {
-                whitelistedChannelIds.Remove(channelId);
-                SaveWhitelist();
-                await component.RespondAsync($"Channel {channelId} has been removed from the whitelist!");
-            }
-            else
-            {
-                await component.RespondAsync($"Channel {channelId} is not in the whitelist.");
-            }
-        }
-        catch
-        {
-            await component.RespondAsync("Unable to remove this channel from the whitelist!");
-        }
-    }
-
-    public async Task SlashCommandHandler(SocketSlashCommand command)
-    {
-        switch (command.Data.Name)
-        {
-            case "whitelist":
-                await HandleWhitelistCommand(command);
-                break;
-            case "remove":
-                await HandleRemoveCommand(command);
-                break;
-        }
-    }
-
-    private async Task HandleWhitelistCommand(SocketSlashCommand command)
-    {
-        try
-        {
-            ulong channelId = command.Channel.Id;
-            if (!whitelistedChannelIds.Contains(channelId))
-            {
-                whitelistedChannelIds.Add(channelId);
-                SaveWhitelist();
-                await command.RespondAsync($"Channel {channelId} has been whitelisted!");
-            }
-            else
-            {
-                await command.RespondAsync($"Channel {channelId} is already whitelisted.");
-            }
-        }
-        catch
-        {
-            await command.RespondAsync("Unable to whitelist this channel!");
-        }
-    }
-
-    private async Task HandleRemoveCommand(SocketSlashCommand command)
-    {
-        try
-        {
-            ulong channelId = command.Channel.Id;
-            if (whitelistedChannelIds.Contains(channelId))
-            {
-                whitelistedChannelIds.Remove(channelId);
-                SaveWhitelist();
-                await command.RespondAsync($"Channel {channelId} has been removed from the whitelist!");
-            }
-            else
-            {
-                await command.RespondAsync($"Channel {channelId} is not in the whitelist.");
-            }
-        }
-        catch
-        {
-            await command.RespondAsync("Unable to remove this channel from the whitelist!");
-        }
-    }
-
-    private void SaveWhitelist()
-    {
-        try
-        {
-            JArray jsonArray = new JArray(whitelistedChannelIds);
-            File.WriteAllText(whitelistFilePath, jsonArray.ToString());
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Failed to save whitelist: {ex.Message}");
-        }
-    }
-
-    private void LoadWhitelist()
-    {
-        try
-        {
-            if (File.Exists(whitelistFilePath))
-            {
-                string json = File.ReadAllText(whitelistFilePath);
-                JArray jsonArray = JArray.Parse(json);
-                whitelistedChannelIds = jsonArray.ToObject<List<ulong>>() ?? new List<ulong>();
-            }
-            else
-            {
-                // Create the file if it does not exist
-                SaveWhitelist();
+                Console.WriteLine($"Memory file {fileName} does not exist.");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Failed to load whitelist: {ex.Message}");
-            whitelistedChannelIds = new List<ulong>();
+            Console.WriteLine($"Error deleting memory file: {ex.Message}");
         }
+        await Task.CompletedTask;
     }
-    */
 }
