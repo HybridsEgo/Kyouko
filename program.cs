@@ -23,6 +23,14 @@ public partial class Program
     private const int MemoryMaxLines = 100;
     private const long MaxMemorySize = 200 * 1024 * 1024;
 
+    // Updated custom prompt to discourage internal monologue
+    private const string CustomPrompt = @"You are a helpful AI assistant in a Discord server. Follow these rules:
+1. Respond concisely but naturally
+2. use all revelant info given to you to make your responses more natural
+3. Always maintain a friendly and professional tone
+4. Acknowledge users by their username when relevant
+5. Never show internal thinking process - only provide final answers";
+
     public static void Main(string[] args) => new Program().MainAsync().GetAwaiter().GetResult();
 
     public async Task MainAsync()
@@ -49,7 +57,7 @@ public partial class Program
         _client = new DiscordSocketClient();
         _client.Log += message => { Console.WriteLine(message.ToString()); return Task.CompletedTask; };
 
-        await _client.LoginAsync(TokenType.Bot, "insert tokenhere");
+        await _client.LoginAsync(TokenType.Bot, ""); // Replace with your bot token
         await _client.StartAsync();
 
         _client.MessageReceived += MessageReceived;
@@ -67,9 +75,27 @@ public partial class Program
         {
             File.WriteAllText(whitelistFilePath, "[]");
         }
+
         var json = File.ReadAllText(whitelistFilePath);
-        var array = JArray.Parse(json);
-        whitelistedChannelIds = array.Select(id => (ulong)id).ToList();
+
+        // Handle empty file or invalid JSON
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            whitelistedChannelIds = new List<ulong>();
+            return;
+        }
+
+        try
+        {
+            var array = JArray.Parse(json);
+            whitelistedChannelIds = array.Select(id => (ulong)id).ToList();
+        }
+        catch (Newtonsoft.Json.JsonException)
+        {
+            // Create new empty list if JSON is corrupted
+            whitelistedChannelIds = new List<ulong>();
+            File.WriteAllText(whitelistFilePath, "[]");
+        }
     }
 
     private static void SaveWhitelistedChannels()
@@ -101,7 +127,7 @@ public partial class Program
         {
             try
             {
-                var allowedChannels = new HashSet<ulong> { insert channel ids here, ,  };
+                var allowedChannels = new HashSet<ulong> { 1090479634715516948, 1089715502663880765, 1091941641729888376 };
                 allowedChannels.UnionWith(whitelistedChannelIds);
 
                 if (!allowedChannels.Contains(msg.Channel.Id))
@@ -125,12 +151,12 @@ public partial class Program
 
                             var uri = new Uri("http://localhost:11434");
                             var ollama = new OllamaApiClient(uri);
-                            ollama.SelectedModel = "insert model here";
+                            ollama.SelectedModel = ""; //replace with ur on  model 
 
                             Console.WriteLine($"User: {msg.Author.Username} sent an image.");
 
                             var memory = await GetUserMemory(msg.Author.Id);
-                            var input = $"{memory}\nUser: {msg.Author.Username} ({msg.Author.Id}): {msg.Content.Trim()}";
+                            var input = $"{CustomPrompt}\n{memory}\nUser: {msg.Author.Username} ({msg.Author.Id}): {msg.Content.Trim()}";
 
                             StringBuilder messageHolder = new StringBuilder();
                             await msg.Channel.TriggerTypingAsync();
@@ -144,14 +170,20 @@ public partial class Program
                             await foreach (var stream in ollama.GenerateAsync(request, CancellationToken.None))
                             {
                                 messageHolder.Append(stream.Response);
-                                Console.Write(stream.Response);
+                                Console.Write(stream.Response); // Show thinking process in terminal
                             }
                             Console.WriteLine();
 
+                            // Remove <think> blocks from Discord response
                             var replyMessage = messageHolder.ToString();
-                            if (string.IsNullOrWhiteSpace(replyMessage)) replyMessage = "No content generated.";
+                            var cleanReply = Regex.Replace(replyMessage, @"<think>.*?</think>", "", RegexOptions.Singleline);
 
-                            var chunks = SplitMessage(replyMessage).ToList();
+                            // Log full response to terminal
+                            Console.WriteLine($"Full AI output:\n{replyMessage}");
+
+                            if (string.IsNullOrWhiteSpace(cleanReply)) cleanReply = "No content generated.";
+
+                            var chunks = SplitMessage(cleanReply).ToList();
                             for (int i = 0; i < chunks.Count; i++)
                             {
                                 if (i == 0)
@@ -164,7 +196,7 @@ public partial class Program
                             File.Delete(tempImagePath);
 
                             string userLine = $"User: {msg.Author.Username} ({msg.Author.Id}): {msg.Content.Trim()}";
-                            string assistantLine = $"Assistant: {replyMessage}";
+                            string assistantLine = $"Assistant: {cleanReply}";
                             await UpdateUserMemory(msg.Author.Id, $"{userLine}\n{assistantLine}");
                         }
                     }
@@ -173,12 +205,12 @@ public partial class Program
                 {
                     var uri = new Uri("http://localhost:11434");
                     var ollama = new OllamaApiClient(uri);
-                    ollama.SelectedModel = "deepseek-r1:8b";
+                    ollama.SelectedModel = "";  //replace with the model of ur choice
 
                     Console.WriteLine($"User: {msg.Author.Username} said: {msg.Content.Trim()}");
 
                     var memory = await GetUserMemory(msg.Author.Id);
-                    var input = $"{memory}\nUser: {msg.Author.Username} ({msg.Author.Id}): {msg.Content.Trim()}";
+                    var input = $"{CustomPrompt}\n{memory}\nUser: {msg.Author.Username} ({msg.Author.Id}): {msg.Content.Trim()}";
 
                     StringBuilder messageHolder = new StringBuilder();
                     await msg.Channel.TriggerTypingAsync();
@@ -189,14 +221,20 @@ public partial class Program
                     await foreach (var stream in ollama.GenerateAsync(textRequest, CancellationToken.None))
                     {
                         messageHolder.Append(stream.Response);
-                        Console.Write(stream.Response);
+                        Console.Write(stream.Response); // Show thinking process in terminal
                     }
                     Console.WriteLine();
 
+                    // Remove <think> blocks from Discord response
                     var replyMessage = messageHolder.ToString();
-                    if (string.IsNullOrWhiteSpace(replyMessage)) replyMessage = "No content generated.";
+                    var cleanReply = Regex.Replace(replyMessage, @"<think>.*?</think>", "", RegexOptions.Singleline);
 
-                    var chunks = SplitMessage(replyMessage).ToList();
+                    // Log full response to terminal
+                    Console.WriteLine($"Full AI output:\n{replyMessage}");
+
+                    if (string.IsNullOrWhiteSpace(cleanReply)) cleanReply = "No content generated.";
+
+                    var chunks = SplitMessage(cleanReply).ToList();
                     for (int i = 0; i < chunks.Count; i++)
                     {
                         if (i == 0)
@@ -207,7 +245,7 @@ public partial class Program
                     }
 
                     string userLine = $"User: {msg.Author.Username} ({msg.Author.Id}): {msg.Content.Trim()}";
-                    string assistantLine = $"Assistant: {replyMessage}";
+                    string assistantLine = $"Assistant: {cleanReply}";
                     await UpdateUserMemory(msg.Author.Id, $"{userLine}\n{assistantLine}");
                 }
             }
