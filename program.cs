@@ -1,206 +1,278 @@
-using System;
 using System.IO;
 using System.Threading.Tasks;
+using System.Threading;
+using System.Text.RegularExpressions;
 using Discord;
 using Discord.WebSocket;
-using Discord.Interactions;
 using Newtonsoft.Json.Linq;
-using Discord.Commands;
-using OllamaSharp;
 using System.Text;
 using System.Collections.Generic;
+using OllamaSharp;
+using OllamaSharp.Models;
+using System.Net.Http;
+using System.Linq;
 
-public class Program
+public partial class Program
 {
     private DiscordSocketClient? _client;
     public string apiKeys = "keys.json";
-    public JObject json = JObject.Parse(File.ReadAllText("keys.json"));
+    public JObject json;
     private static readonly string whitelistFilePath = "channelWhitelist.json";
     private static List<ulong> whitelistedChannelIds = new List<ulong>();
     private string _memoryFilePath = "memory";
+    private const int MemoryMaxLines = 100;
+    private const long MaxMemorySize = 200 * 1024 * 1024;
 
     public static void Main(string[] args) => new Program().MainAsync().GetAwaiter().GetResult();
 
     public async Task MainAsync()
     {
-        //LoadWhitelist();
+        LoadWhitelistedChannels();
 
         if (!File.Exists(apiKeys))
         {
             Console.WriteLine("File not found.");
-            File.Create(apiKeys);
+            File.WriteAllText(apiKeys, "{}");
         }
+        json = JObject.Parse(File.ReadAllText(apiKeys));
 
-        _client = new DiscordSocketClient();
-        _client.Log += message => { Log(message); return Task.CompletedTask; };
-
-        JToken discordToken = json["discordToken"];
-
-        await _client.LoginAsync(TokenType.Bot, discordToken.ToString());
-        await _client.StartAsync();
-
-        _client.MessageReceived += MessageReceived;
-        _client.ButtonExecuted += ButtonHandler;
-
-        await _client.SetStatusAsync(UserStatus.DoNotDisturb);
-        await _client.SetGameAsync("🙌");
-
-        Console.ReadKey();
-
-        await _client.StopAsync();
-    }
-
-    private Task Log(LogMessage message)
-    {
-        if (message.ToString().Contains("Connecting") && message.ToString().Contains("Gateway"))
+        if (!Directory.Exists("temp"))
         {
-            Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss")} : Discord Gateway - Connecting...");
+            Directory.CreateDirectory("temp");
         }
 
-        if (message.ToString().Contains("Ready") && message.ToString().Contains("Gateway"))
-        {
-            Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss")} : Discord Gateway - Connected and ready!");
-        }
-
-        return Task.CompletedTask;
-    }
-
-    private async Task MessageReceived(SocketMessage discordMessage)
-    {
-        try
-        {
-            if (discordMessage.Channel.Id != 1090479634715516948 &&
-                discordMessage.Channel.Id != 1089715502663880765 &&
-                discordMessage.Channel.Id != 1091941641729888376) return;
-
-            var uri = new Uri("http://localhost:11434");
-            var ollama = new OllamaApiClient(uri);
-            ollama.SelectedModel = "Kyouko";
-
-            if (!(discordMessage is SocketUserMessage msg)) return;
-            if (msg.Author.IsBot) return;
-
-            var context = new CommandContext(_client, msg);
-
-            ulong colorize = 674068746167386149;
-            int r = 0, g = 0, b = 0;
-
-            EmbedBuilder builder = new EmbedBuilder();
-            var random = new Random();
-            r = random.Next(0, 255);
-            g = random.Next(0, 255);
-            b = random.Next(0, 255);
-
-            Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss")} : Discord Message - User: " + discordMessage.Author.Username + " in: " + discordMessage.Channel.Name + " said: " + discordMessage.Content.Trim());
-            Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss")} : Kyouko - Generating response...");
-
-            var emojiList = new List<string> { "👌", "👋", "🙌", "👀", "🙃", "🤔", "🤨" };
-            int index = random.Next(emojiList.Count);
-            var selectedEmoji = new Emoji(emojiList[index]);
-            await discordMessage.AddReactionAsync(selectedEmoji);
-
-            var memory = await GetUserMemory(msg.Author.Id);
-            var input = $"{memory}\nUser: {discordMessage.Author.Username} ({msg.Author.Id}): {discordMessage.Content.Trim()}"; // Include memory in the input for the language model
-
-            ConversationContext llama3Context = null;
-            StringBuilder messageHolder = new StringBuilder();
-
-            await discordMessage.Channel.TriggerTypingAsync();
-
-            Console.Write($"{DateTime.Now.ToString("HH:mm:ss")} : Kyouko -");
-            await foreach (var stream in ollama.StreamCompletion(discordMessage.Content.Trim().ToString(), llama3Context))
-            {
-                messageHolder.Append(stream.Response);
-
-                // real time output
-                Console.Write(stream.Response);
-            }
-            Console.WriteLine($" ");
-
-            var newMemory = $"{memory}\nUser: {discordMessage.Author.Username} ({msg.Author.Id}): {discordMessage.Content.Trim()}";
-            await SaveUserMemory(msg.Author.Id, newMemory); // Save the conversation history for the user
-
-            var buttonbuilder = new ComponentBuilder();
-
-            builder.WithColor(r, g, b)
-                   .WithDescription(messageHolder.ToString());
-
-            await context.Message.ReplyAsync(messageHolder.ToString());
-            Console.WriteLine($"{DateTime.Now.ToString("HH:mm:ss")} : Kyouko - Finished!");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(ex);
-            return;
-        }
-    }
-
-    public async Task ButtonHandler(SocketMessageComponent component)
-    {
-        switch (component.Data.CustomId)
-        {
-            case "whitelist":
-                //await HandleWhitelistButton(component);
-                break;
-            case "remove":
-                //await HandleRemoveButton(component);
-                break;
-        }
-    }
-
-    private string GetUserMemoryFileName(ulong userId)
-    {
-        return Path.Combine(_memoryFilePath, $"user_memory_{userId}.txt");
-    }
-
-    private async Task<string> GetUserMemory(ulong userId)
-    {
-        var fileName = GetUserMemoryFileName(userId);
-        if (!File.Exists(fileName))
-        {
-            return "";
-        }
-
-        using (StreamReader reader = File.OpenText(fileName))
-        {
-            return await reader.ReadToEndAsync();
-        }
-    }
-
-    private async Task SaveUserMemory(ulong userId, string memory)
-    {
         if (!Directory.Exists(_memoryFilePath))
         {
             Directory.CreateDirectory(_memoryFilePath);
         }
 
-        var fileName = GetUserMemoryFileName(userId);
-        using (StreamWriter writer = new StreamWriter(fileName, append: true))
-        {
-            await writer.WriteLineAsync(memory);
-        }
+        _client = new DiscordSocketClient();
+        _client.Log += message => { Console.WriteLine(message.ToString()); return Task.CompletedTask; };
+
+        await _client.LoginAsync(TokenType.Bot, "insert tokenhere");
+        await _client.StartAsync();
+
+        _client.MessageReceived += MessageReceived;
+
+        await _client.SetStatusAsync(UserStatus.DoNotDisturb);
+        await _client.SetGameAsync("🙌");
+
+        Console.ReadKey();
+        await _client.StopAsync();
     }
 
-
-    private async Task ClearUserMemory(ulong userId)
+    private static void LoadWhitelistedChannels()
     {
-        var fileName = GetUserMemoryFileName(userId);
+        if (!File.Exists(whitelistFilePath))
+        {
+            File.WriteAllText(whitelistFilePath, "[]");
+        }
+        var json = File.ReadAllText(whitelistFilePath);
+        var array = JArray.Parse(json);
+        whitelistedChannelIds = array.Select(id => (ulong)id).ToList();
+    }
+
+    private static void SaveWhitelistedChannels()
+    {
+        var array = new JArray(whitelistedChannelIds.Select(id => id.ToString()));
+        File.WriteAllText(whitelistFilePath, array.ToString());
+    }
+
+    private static IEnumerable<string> SplitMessage(string message, int maxLength = 2000)
+    {
+        if (string.IsNullOrEmpty(message))
+            return new[] { "No content generated." };
+
+        var messages = new List<string>();
+        while (message.Length > 0)
+        {
+            var length = Math.Min(maxLength, message.Length);
+            messages.Add(message.Substring(0, length));
+            message = message.Substring(length);
+        }
+        return messages;
+    }
+
+    private async Task MessageReceived(SocketMessage discordMessage)
+    {
+        if (!(discordMessage is SocketUserMessage msg) || msg.Author.IsBot) return;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var allowedChannels = new HashSet<ulong> { insert channel ids here, ,  };
+                allowedChannels.UnionWith(whitelistedChannelIds);
+
+                if (!allowedChannels.Contains(msg.Channel.Id))
+                {
+                    Console.WriteLine($"Ignoring message in non-whitelisted channel: {msg.Channel.Id}");
+                    return;
+                }
+
+                var attachments = msg.Attachments.ToArray();
+                if (attachments.Length > 0)
+                {
+                    foreach (var attachment in attachments)
+                    {
+                        if (attachment.Width.HasValue && attachment.Height.HasValue)
+                        {
+                            string imageUrl = attachment.Url;
+                            string tempImagePath = Path.Combine("temp", attachment.Filename);
+
+                            await DownloadImageAsync(imageUrl, tempImagePath);
+                            byte[] imageBytes = File.ReadAllBytes(tempImagePath);
+
+                            var uri = new Uri("http://localhost:11434");
+                            var ollama = new OllamaApiClient(uri);
+                            ollama.SelectedModel = "insert model here";
+
+                            Console.WriteLine($"User: {msg.Author.Username} sent an image.");
+
+                            var memory = await GetUserMemory(msg.Author.Id);
+                            var input = $"{memory}\nUser: {msg.Author.Username} ({msg.Author.Id}): {msg.Content.Trim()}";
+
+                            StringBuilder messageHolder = new StringBuilder();
+                            await msg.Channel.TriggerTypingAsync();
+
+                            var request = new GenerateRequest
+                            {
+                                Prompt = input,
+                            };
+
+                            Console.Write("Generating response... ");
+                            await foreach (var stream in ollama.GenerateAsync(request, CancellationToken.None))
+                            {
+                                messageHolder.Append(stream.Response);
+                                Console.Write(stream.Response);
+                            }
+                            Console.WriteLine();
+
+                            var replyMessage = messageHolder.ToString();
+                            if (string.IsNullOrWhiteSpace(replyMessage)) replyMessage = "No content generated.";
+
+                            var chunks = SplitMessage(replyMessage).ToList();
+                            for (int i = 0; i < chunks.Count; i++)
+                            {
+                                if (i == 0)
+                                    await msg.ReplyAsync(chunks[i]);
+                                else
+                                    await msg.Channel.SendMessageAsync(chunks[i]);
+                                await Task.Delay(200);
+                            }
+
+                            File.Delete(tempImagePath);
+
+                            string userLine = $"User: {msg.Author.Username} ({msg.Author.Id}): {msg.Content.Trim()}";
+                            string assistantLine = $"Assistant: {replyMessage}";
+                            await UpdateUserMemory(msg.Author.Id, $"{userLine}\n{assistantLine}");
+                        }
+                    }
+                }
+                else
+                {
+                    var uri = new Uri("http://localhost:11434");
+                    var ollama = new OllamaApiClient(uri);
+                    ollama.SelectedModel = "deepseek-r1:8b";
+
+                    Console.WriteLine($"User: {msg.Author.Username} said: {msg.Content.Trim()}");
+
+                    var memory = await GetUserMemory(msg.Author.Id);
+                    var input = $"{memory}\nUser: {msg.Author.Username} ({msg.Author.Id}): {msg.Content.Trim()}";
+
+                    StringBuilder messageHolder = new StringBuilder();
+                    await msg.Channel.TriggerTypingAsync();
+
+                    var textRequest = new GenerateRequest { Prompt = input };
+
+                    Console.Write("Generating response... ");
+                    await foreach (var stream in ollama.GenerateAsync(textRequest, CancellationToken.None))
+                    {
+                        messageHolder.Append(stream.Response);
+                        Console.Write(stream.Response);
+                    }
+                    Console.WriteLine();
+
+                    var replyMessage = messageHolder.ToString();
+                    if (string.IsNullOrWhiteSpace(replyMessage)) replyMessage = "No content generated.";
+
+                    var chunks = SplitMessage(replyMessage).ToList();
+                    for (int i = 0; i < chunks.Count; i++)
+                    {
+                        if (i == 0)
+                            await msg.ReplyAsync(chunks[i]);
+                        else
+                            await msg.Channel.SendMessageAsync(chunks[i]);
+                        await Task.Delay(200);
+                    }
+
+                    string userLine = $"User: {msg.Author.Username} ({msg.Author.Id}): {msg.Content.Trim()}";
+                    string assistantLine = $"Assistant: {replyMessage}";
+                    await UpdateUserMemory(msg.Author.Id, $"{userLine}\n{assistantLine}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error processing message: {ex}");
+            }
+        });
+    }
+
+    private async Task<string> GetUserMemory(ulong userId)
+    {
+        var fileName = Path.Combine(_memoryFilePath, $"user_memory_{userId}.txt");
+        if (!File.Exists(fileName)) return "";
+        var lines = await File.ReadAllLinesAsync(fileName);
+        return string.Join("\n", lines);
+    }
+
+    private async Task UpdateUserMemory(ulong userId, string newContent)
+    {
+        var fileName = Path.Combine(_memoryFilePath, $"user_memory_{userId}.txt");
+        Directory.CreateDirectory(Path.GetDirectoryName(fileName));
+
+        List<string> lines = new List<string>();
+        if (File.Exists(fileName))
+        {
+            lines.AddRange(await File.ReadAllLinesAsync(fileName));
+        }
+
+        lines.AddRange(newContent.Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries));
+
+        if (lines.Count > MemoryMaxLines)
+        {
+            lines = lines.Skip(lines.Count - MemoryMaxLines).ToList();
+        }
+
+        long currentSize = 0;
+        foreach (var line in lines)
+        {
+            currentSize += Encoding.UTF8.GetByteCount(line) + 1;
+        }
+
+        while (currentSize > MaxMemorySize && lines.Count > 0)
+        {
+            var removedLine = lines[0];
+            currentSize -= Encoding.UTF8.GetByteCount(removedLine) + 1;
+            lines.RemoveAt(0);
+        }
+
+        await File.WriteAllLinesAsync(fileName, lines);
+    }
+
+    private async Task DownloadImageAsync(string url, string outputPath)
+    {
         try
         {
-            if (File.Exists(fileName))
+            using (var client = new HttpClient())
             {
-                File.Delete(fileName);
-                Console.WriteLine($"Memory file {fileName} deleted successfully.");
-            }
-            else
-            {
-                Console.WriteLine($"Memory file {fileName} does not exist.");
+                var imageBytes = await client.GetByteArrayAsync(url);
+                await File.WriteAllBytesAsync(outputPath, imageBytes);
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error deleting memory file: {ex.Message}");
+            Console.WriteLine($"Error downloading image: {ex.Message}");
         }
-        await Task.CompletedTask;
     }
 }
